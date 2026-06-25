@@ -1,0 +1,240 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Ticketing Platform Admin — Prisma Schema
+//
+// Database: Neon PostgreSQL
+// Conventions:
+//   • UUID primary keys everywhere (`@id @default(uuid()) @db.Uuid`).
+//   • Every table carries `createdAt` and `updatedAt` audit timestamps.
+//   • Join tables are explicit models (RolePermission, UserRole) so we can
+//     attach metadata (who assigned, when) — a hard requirement for auditable
+//     enterprise RBAC.
+//   • snake_case table names via `@@map` for clean SQL; camelCase in code.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity & Access (RBAC core)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Application user. `passwordHash` is nullable to support OAuth-only accounts
+/// in the future; credentials login populates it.
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String?
+  passwordHash String?   @map("password_hash")
+  image        String?
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+
+  // Optional default branch/location scoping for multi-branch operations.
+  branchId   String? @map("branch_id") @db.Uuid
+  branch     Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  locationId String? @map("location_id") @db.Uuid
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  // Relations
+  userRoles UserRole[]
+  auditLogs AuditLog[]
+  accounts  Account[]
+  sessions  Session[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([branchId])
+  @@index([locationId])
+  @@map("users")
+}
+
+/// A named role. System roles (Super Admin, Admin, …) are seeded with
+/// `isSystem = true` and protected from deletion/renaming in the UI.
+model Role {
+  id          String  @id @default(uuid()) @db.Uuid
+  key         String  @unique // machine key, e.g. "super_admin"
+  name        String // display name, e.g. "Super Admin"
+  description String?
+  isSystem    Boolean @default(false) @map("is_system")
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+/// A single permission, e.g. "tickets.create". `key` follows `<resource>.<action>`.
+model Permission {
+  id          String  @id @default(uuid()) @db.Uuid
+  key         String  @unique
+  description String?
+  /// Logical grouping for the permission-picker UI, e.g. "Tickets".
+  group       String?
+
+  rolePermissions RolePermission[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("permissions")
+}
+
+/// Explicit Role↔Permission join. Carries assignment metadata for auditing.
+model RolePermission {
+  id           String @id @default(uuid()) @db.Uuid
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  assignedById String?   @map("assigned_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+/// Explicit User↔Role join. A user may hold multiple roles.
+model UserRole {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  assignedById String?  @map("assigned_by_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auditing
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Append-only audit trail. `actorId` is nullable so system/automated events
+/// can be recorded. `metadata` holds a JSON snapshot of the change for forensics.
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  action     String // e.g. "user.created", "ticket.printed"
+  entityType String?  @map("entity_type") // e.g. "User", "Ticket"
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multi-branch / multi-location scaffolding
+// (Models exist now so foreign keys are stable; full features come later.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Branch {
+  id       String  @id @default(uuid()) @db.Uuid
+  name     String
+  code     String  @unique
+  isActive Boolean @default(true) @map("is_active")
+
+  users     User[]
+  locations Location[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("branches")
+}
+
+model Location {
+  id       String  @id @default(uuid()) @db.Uuid
+  branchId String  @map("branch_id") @db.Uuid
+  name     String
+  isActive Boolean @default(true) @map("is_active")
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  users  User[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([branchId])
+  @@map("locations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auth.js (NextAuth) adapter models
+// Required by @auth/prisma-adapter for OAuth/email flows added later.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id") @db.Uuid
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}

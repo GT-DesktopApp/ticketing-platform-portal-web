@@ -1,0 +1,18 @@
+# Build output & dependencies
+node_modules
+.next
+out
+build
+dist
+coverage
+
+# Generated
+src/generated
+prisma/migrations
+
+# Lockfiles
+package-lock.json
+
+# Misc
+*.md
+.env*
