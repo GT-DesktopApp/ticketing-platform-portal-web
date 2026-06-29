@@ -112,3 +112,99 @@
     color: var(--foreground);
   }
 }
+
+/*
+ * POS brand palette (navy + amber) from the booking designs. Declared as
+ * standalone variables so the POS screens can opt in WITHOUT changing the
+ * neutral admin theme used elsewhere.
+ */
+:root {
+  --pos-navy: #0d2240;
+  --pos-navy-700: #15314f;
+  --pos-amber: #f5a623;
+  --pos-amber-600: #e8920f;
+  --pos-amber-soft: #fdf3e2;
+  --pos-blue-soft: #eef5fc;
+  --pos-success: #1f9d57;
+  --pos-danger: #d64545;
+}
+
+.pos-btn-amber {
+  background: var(--pos-amber);
+  color: #1c1407;
+}
+.pos-btn-amber:hover {
+  background: var(--pos-amber-600);
+}
+.pos-btn-navy {
+  background: var(--pos-navy);
+  color: #fff;
+}
+.pos-btn-navy:hover {
+  background: var(--pos-navy-700);
+}
+
+/*
+ * Login screen design tokens (from the premium login reference).
+ *
+ * Scoped to its own variable block so the enterprise login experience can use
+ * exact brand values (navy #082F49 + amber #FBBF24) WITHOUT changing the
+ * neutral admin theme or the POS palette above.
+ */
+:root {
+  --login-navy: #082f49;
+  --login-navy-hover: #0b3d61;
+  --login-amber: #fbbf24;
+  --login-amber-hover: #e9a90c;
+  --login-text-muted: #6b7280;
+  --login-border: #d1d5db;
+  --login-hover-bg: #f3f4f6;
+}
+
+/* Card entrance: fade + subtle scale-up on page load. */
+@keyframes login-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.login-card-animate {
+  animation: login-card-in 400ms ease-out both;
+}
+
+/* Respect users who prefer reduced motion: no scale/fade animation. */
+@media (prefers-reduced-motion: reduce) {
+  .login-card-animate {
+    animation: none;
+  }
+}
+
+/*
+ * Booking panel reveal: fade + slide-in when an attraction is selected
+ * (progressive disclosure). 250ms, matching the layout transition.
+ */
+@keyframes booking-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.booking-panel-enter {
+  animation: booking-panel-in 250ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .booking-panel-enter {
+    animation: none;
+  }
+}

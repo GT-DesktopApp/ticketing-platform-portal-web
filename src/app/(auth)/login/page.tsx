@@ -1,55 +1,143 @@
-import type { Metadata } from "next";
+"use client";
 
-import { Button } from "@/components/ui/button";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Mail } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signIn } from "next-auth/react";
+import { Suspense, useState } from "react";
+import { useForm } from "react-hook-form";
 
-export const metadata: Metadata = {
-  title: "Sign in",
-};
+import { appConfig } from "@/config/app.config";
+import { DEFAULT_LOGIN_REDIRECT } from "@/lib/constants/routes";
+import {
+  FooterMessage,
+  InputField,
+  LoginButton,
+  LoginCard,
+  type LoginRole,
+  PasswordField,
+  RoleTabs,
+} from "@/modules/auth/components";
+import {
+  type LoginInput,
+  loginSchema,
+} from "@/modules/auth/schemas/login.schema";
 
 /**
- * Login page (foundation).
+ * Premium login experience.
  *
- * Renders the credentials form shell. The interactive form (React Hook Form +
- * Zod `loginSchema` + `signIn("credentials", …)`) is implemented in the auth
- * milestone; this static version establishes the layout and route.
+ * The form remains a single Email/Password credentials flow: the user's role is
+ * resolved from the database record on the server during verification, never
+ * from the client. The Admin/Manager/Staff tabs are a **visual** selector only
+ * (see {@link RoleTabs}) and do not influence authentication.
+ *
+ * The page is pure composition of the small `auth` UI components — no markup or
+ * styling is duplicated here.
+ */
+function LoginForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [role, setRole] = useState<LoginRole>("admin");
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginInput>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  async function onSubmit(values: LoginInput) {
+    setServerError(null);
+    const result = await signIn("credentials", {
+      email: values.email,
+      password: values.password,
+      redirect: false,
+    });
+
+    if (result?.error) {
+      setServerError("Invalid email or password.");
+      return;
+    }
+    const callbackUrl =
+      searchParams.get("callbackUrl") ?? DEFAULT_LOGIN_REDIRECT;
+    router.push(callbackUrl);
+    router.refresh();
+  }
+
+  return (
+    <div className="w-full max-w-[520px]">
+      <LoginCard
+        title="Welcome Back!"
+        subtitle="Login to continue managing tickets, bookings and visitors."
+      >
+        {/* <RoleTabs value={role} onChange={setRole} /> */}
+
+        {serverError && (
+          <div
+            role="alert"
+            className="mt-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[16px] text-destructive"
+          >
+            {serverError}
+          </div>
+        )}
+
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="mt-6 space-y-5"
+          noValidate
+        >
+          <InputField
+            id="email"
+            label="Email/Username"
+            icon={Mail}
+            type="email"
+            autoComplete="email"
+            placeholder="Enter your email or username"
+            error={errors.email?.message}
+            {...register("email")}
+          />
+
+          <div className="space-y-2">
+            <PasswordField
+              id="password"
+              label="Password"
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              error={errors.password?.message}
+              {...register("password")}
+            />
+            <div className="flex justify-end">
+              <a
+                href="#"
+                className="text-[16px] text-[var(--login-text-muted)] underline-offset-4 transition-colors hover:text-[var(--login-navy)] hover:underline focus-visible:underline focus-visible:outline-none"
+              >
+                Forgot Password?
+              </a>
+            </div>
+          </div>
+
+          <LoginButton loading={isSubmitting}>
+            {isSubmitting ? "Signing in…" : "Login"}
+          </LoginButton>
+        </form>
+      </LoginCard>
+
+      <FooterMessage email={appConfig.supportEmail} />
+    </div>
+  );
+}
+
+/**
+ * Page wrapper: `useSearchParams()` (read inside LoginForm to honor a
+ * `callbackUrl`) requires a Suspense boundary for static prerendering.
  */
 export default function LoginPage() {
   return (
-    <div className="rounded-xl border bg-card p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">Sign in</h2>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Enter your credentials to access the admin console.
-      </p>
-
-      <form className="space-y-4">
-        <div className="space-y-2">
-          <label htmlFor="email" className="text-sm font-medium">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            disabled
-            placeholder="you@company.com"
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60"
-          />
-        </div>
-        <div className="space-y-2">
-          <label htmlFor="password" className="text-sm font-medium">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            disabled
-            placeholder="••••••••"
-            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60"
-          />
-        </div>
-        <Button type="button" className="w-full" disabled>
-          Sign in (enabled in the auth milestone)
-        </Button>
-      </form>
-    </div>
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -238,3 +238,311 @@ model VerificationToken {
   @@unique([identifier, token])
   @@map("verification_tokens")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POS — Ticket Booking domain
+//
+// Models the booking flow seen in the designs:
+//   Attraction → choose Visitor Categories & quantities → Customer →
+//   (optional) sequential Seat allocation by Bogie → Payment.
+// Money is stored in PAISE (integer) to avoid floating-point rounding in sales.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A bookable attraction (ride / fort / palace / zoo …). The "Toy Train" card
+/// in the booking screen is one of these. `requiresSeats` drives whether the
+/// seat-allocation step is shown.
+model Attraction {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
+  type        String // "Ride" | "Fort" | "Palace" | "Zoo" | "Museum" | "Heritage"
+  /// Booking flow: STANDARD shows fixed visitor categories (Adult/Child/…);
+  /// CATEGORY shows the attraction's own ticket categories from the DB.
+  bookingType BookingType @default(STANDARD) @map("booking_type")
+  description String?
+  imageUrl    String? @map("image_url")
+
+  /// Base rate per person in paise (e.g. ₹80 = 8000). Display-level info; the
+  /// authoritative per-ticket price comes from TicketCategory.
+  baseRatePaise Int  @map("base_rate_paise")
+  durationMin   Int? @map("duration_min") // e.g. 20 (min per trip)
+
+  /// Seats available per trip (e.g. 24). Null for non-seated attractions.
+  seatsPerTrip  Int?    @map("seats_per_trip")
+  requiresSeats Boolean @default(false) @map("requires_seats")
+
+  openTime  String? @map("open_time") // "10:00 AM"
+  closeTime String? @map("close_time") // "6:00 PM"
+  isActive  Boolean @default(true) @map("is_active")
+
+  categories TicketCategory[]
+  bogies     Bogie[]
+  bookings   Booking[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@index([isActive])
+  @@map("attractions")
+}
+
+/// A priced visitor category for an attraction (Adult, Child, Senior Citizen,
+/// Student, Foreigner). Price is per-ticket, in paise.
+/// A priced ticket row of an attraction. In STANDARD mode these are visitor
+/// categories (Adult/Child/Foreigner/…); in CATEGORY mode they are the
+/// attraction's own ticket categories (e.g. "Indian Adult (2-way)", "Boat (4)").
+/// Both render in the SAME vertical row list (name / price / −qty+ / amount).
+/// Table name kept as `ticket_categories` for FK stability.
+model TicketCategory {
+  id             String  @id @default(uuid()) @db.Uuid
+  attractionId   String  @map("attraction_id") @db.Uuid
+  /// Optional grouping type (CATEGORY mode), e.g. "Toy Train (VIP)".
+  categoryTypeId String? @map("category_type_id") @db.Uuid
+  name           String // e.g. "Adult" or "Indian Adult (2-way)"
+  pricePaise     Int     @map("price_paise")
+  /// Free-form note shown under the name, e.g. "ID Required".
+  note           String?
+  /// Optional image URL (CATEGORY tickets); null is fine.
+  image          String?
+  /// Legacy free-text grouping label; superseded by categoryType.
+  category       String?
+  /// HSN/SAC code for the receipt (e.g. "996411").
+  sacCode        String? @map("sac_code")
+  /// Barcode for scanning at the counter.
+  barcode        String?
+  /// GST rate as a percentage (stored per row; billing applies 18% flat).
+  gstRate        Int     @default(18) @map("gst_rate")
+  sortOrder      Int     @default(0) @map("sort_order")
+  isActive       Boolean @default(true) @map("is_active")
+
+  attraction   Attraction    @relation(fields: [attractionId], references: [id], onDelete: Cascade)
+  categoryType CategoryType? @relation(fields: [categoryTypeId], references: [id], onDelete: SetNull)
+  bookingItems BookingItem[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([attractionId])
+  @@index([categoryTypeId])
+  @@map("ticket_categories")
+}
+
+/// A category type used to group ticket categories in CATEGORY-mode attractions
+/// (e.g. "Toy Train (VIP)", "Toy Train (Regular)", "Boat"). Loaded dynamically
+/// for the New Category dialog's "Category Type" dropdown.
+model CategoryType {
+  id        String  @id @default(uuid()) @db.Uuid
+  name      String  @unique
+  isActive  Boolean @default(true) @map("is_active")
+
+  ticketCategories TicketCategory[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("category_types")
+}
+
+enum BookingType {
+  STANDARD
+  CATEGORY
+
+  @@map("booking_type")
+}
+
+/// A registered customer, searchable by name or mobile in the Customer step.
+model Customer {
+  id        String  @id @default(uuid()) @db.Uuid
+  name      String
+  mobile    String  @unique
+  email     String?
+  /// Free-text address / notes for the customer record.
+  notes     String?
+  isActive  Boolean @default(true) @map("is_active")
+
+  bookings Booking[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([name])
+  @@map("customers")
+}
+
+/// A bogie/coach of a seated attraction. Bogies open SEQUENTIALLY: only the
+/// active bogie is selectable; later ones are `Locked` until the prior fills.
+model Bogie {
+  id           String      @id @default(uuid()) @db.Uuid
+  attractionId String      @map("attraction_id") @db.Uuid
+  label        String // "A" | "B" | "C"
+  capacity     Int // e.g. 24
+  /// Position in the sequential opening order (A=0, B=1, C=2).
+  sequence     Int
+  status       BogieStatus @default(LOCKED)
+
+  attraction Attraction @relation(fields: [attractionId], references: [id], onDelete: Cascade)
+  seats      Seat[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([attractionId, label])
+  @@index([attractionId, sequence])
+  @@map("bogies")
+}
+
+/// A single seat in a bogie. `status` is OCCUPIED once assigned to a booking.
+model Seat {
+  id      String     @id @default(uuid()) @db.Uuid
+  bogieId String     @map("bogie_id") @db.Uuid
+  number  Int // 1..capacity
+  /// "left" | "right" — the two columns shown in the seat grid.
+  side    String
+  status  SeatStatus @default(AVAILABLE)
+
+  bogie       Bogie            @relation(fields: [bogieId], references: [id], onDelete: Cascade)
+  assignments SeatAssignment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([bogieId, number])
+  @@index([status])
+  @@map("seats")
+}
+
+/// A completed (or in-progress) booking — the unit a payment settles.
+/// Amounts are in paise. `bookingNo` is a human-friendly receipt number.
+model Booking {
+  id           String        @id @default(uuid()) @db.Uuid
+  bookingNo    String        @unique @map("booking_no")
+  attractionId String        @map("attraction_id") @db.Uuid
+  customerId   String?       @map("customer_id") @db.Uuid
+  status       BookingStatus @default(PENDING)
+
+  /// True for complimentary passes — payment is waived; pass details captured.
+  isComplimentary Boolean @map("is_complimentary") @default(false)
+  passReference   String? @map("pass_reference")
+
+  subtotalPaise Int @map("subtotal_paise")
+  taxPaise      Int @default(0) @map("tax_paise")
+  roundOffPaise Int @default(0) @map("round_off_paise")
+  totalPaise    Int @map("total_paise")
+
+  /// Who rang up the sale (staff user).
+  createdById String? @map("created_by_id") @db.Uuid
+
+  attraction      Attraction       @relation(fields: [attractionId], references: [id])
+  customer        Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items           BookingItem[]
+  seatAssignments SeatAssignment[]
+  payment         Payment?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([attractionId])
+  @@index([customerId])
+  @@index([status])
+  @@map("bookings")
+}
+
+/// One line of a booking: a category × quantity at the price captured at sale
+/// time (so historical bookings are unaffected by later price changes).
+model BookingItem {
+  id               String @id @default(uuid()) @db.Uuid
+  bookingId        String @map("booking_id") @db.Uuid
+  ticketCategoryId String @map("ticket_category_id") @db.Uuid
+  categoryName     String @map("category_name") // snapshot for receipts
+  quantity         Int
+  unitPricePaise   Int    @map("unit_price_paise")
+  lineTotalPaise   Int    @map("line_total_paise")
+
+  booking  Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  category TicketCategory @relation(fields: [ticketCategoryId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([bookingId])
+  @@map("booking_items")
+}
+
+/// Binds a passenger (by category label) to a specific seat for a booking.
+model SeatAssignment {
+  id           String @id @default(uuid()) @db.Uuid
+  bookingId    String @map("booking_id") @db.Uuid
+  seatId       String @map("seat_id") @db.Uuid
+  /// Passenger label shown in the UI, e.g. "Adult 1", "Child 1".
+  passengerRef String @map("passenger_ref")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  seat    Seat    @relation(fields: [seatId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // A seat can only be assigned once (enforces no double-booking of a seat).
+  @@unique([seatId])
+  @@index([bookingId])
+  @@map("seat_assignments")
+}
+
+/// The payment that settles a booking. One per booking (1–1).
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  bookingId      String        @unique @map("booking_id") @db.Uuid
+  method         PaymentMethod
+  amountDuePaise Int           @map("amount_due_paise")
+  amountPaidPaise Int          @map("amount_paid_paise")
+  changePaise    Int           @default(0) @map("change_paise")
+  status         PaymentStatus @default(COMPLETED)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("payments")
+}
+
+enum BogieStatus {
+  ACTIVE
+  LOCKED
+  FULL
+
+  @@map("bogie_status")
+}
+
+enum SeatStatus {
+  AVAILABLE
+  OCCUPIED
+  BLOCKED
+
+  @@map("seat_status")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+
+  @@map("booking_status")
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+
+  @@map("payment_status")
+}

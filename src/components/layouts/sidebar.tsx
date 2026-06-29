@@ -3,10 +3,11 @@
 import * as Icons from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 
-import { appConfig } from "@/config/app.config";
 import { adminNav, mainNav } from "@/config/navigation";
 import { usePermissions } from "@/hooks/use-permissions";
+import { ROUTES } from "@/lib/constants/routes";
 import { cn } from "@/lib/utils";
 import type { NavItem } from "@/types";
 
@@ -18,67 +19,78 @@ function Icon({ name, className }: { name: string; className?: string }) {
   return <Cmp className={className} aria-hidden />;
 }
 
-function NavSection({ label, items }: { label: string; items: NavItem[] }) {
+function NavSection({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   const { canAny } = usePermissions();
 
-  // Filter items by the current user's permissions (RBAC-driven menu).
+  // Filter by the current user's permissions (RBAC-driven menu).
   const visible = items.filter(
     (item) => !item.permissions?.length || canAny(item.permissions),
   );
-
   if (visible.length === 0) return null;
 
   return (
-    <div className="px-3 py-2">
-      <p className="mb-1 px-3 text-xs font-medium tracking-wider text-muted-foreground uppercase">
-        {label}
-      </p>
-      <nav className="space-y-1">
-        {visible.map((item) => {
-          const active =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              )}
-            >
-              <Icon name={item.icon} className="size-4" />
-              {item.title}
-            </Link>
-          );
-        })}
-      </nav>
-    </div>
+    <nav className="space-y-1 px-3">
+      {visible.map((item) => {
+        const active =
+          pathname === item.href || pathname.startsWith(`${item.href}/`);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium transition-colors duration-150",
+              active
+                ? "bg-[var(--pos-amber)] text-[#1c1407] shadow-sm"
+                : "text-white/75 hover:bg-white/10 hover:text-white",
+            )}
+          >
+            <Icon name={item.icon} className="size-[18px] shrink-0" />
+            <span className="truncate">{item.title}</span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
 /**
- * Application sidebar. Fixed on desktop, hidden on small screens (the Header's
- * mobile menu will toggle it in a later iteration). Reads navigation from
- * `config/navigation.ts` and gates items by permission.
+ * Application sidebar — navy POS shell (homepage2). Fixed ~250px column with a
+ * branded header, RBAC-gated navigation (gold active highlight), and a Logout
+ * pinned to the bottom. Hidden below `lg` (a mobile drawer toggle comes later).
  */
 export function Sidebar({ className }: { className?: string }) {
   return (
     <aside
       className={cn(
-        "flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar",
+        "flex h-full w-[250px] flex-col text-white",
         className,
       )}
+      style={{ background: "var(--pos-navy)" }}
     >
-      <div className="flex h-16 items-center gap-2 border-b px-6">
-        <Icons.Ticket className="size-6 text-primary" />
-        <span className="font-semibold">{appConfig.shortName}</span>
+      {/* Brand header */}
+      <div className="flex h-16 items-center gap-2.5 px-6">
+        <Icons.TicketCheck className="size-6 text-[var(--pos-amber)]" />
+        <span className="text-[15px] font-semibold">Ticket Booking</span>
       </div>
-      <div className="flex-1 overflow-y-auto py-2">
-        <NavSection label="Operations" items={mainNav} />
-        <NavSection label="Administration" items={adminNav} />
+
+      {/* Navigation */}
+      <div className="flex-1 space-y-4 overflow-y-auto py-4">
+        <NavSection items={mainNav} />
+        <div className="mx-6 border-t border-white/10" />
+        <NavSection items={adminNav} />
+      </div>
+
+      {/* Logout pinned to the bottom */}
+      <div className="border-t border-white/10 p-3">
+        <button
+          type="button"
+          onClick={() => signOut({ callbackUrl: ROUTES.LOGIN })}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium text-white/75 transition-colors duration-150 hover:bg-white/10 hover:text-white"
+        >
+          <Icons.LogOut className="size-[18px]" />
+          Logout
+        </button>
       </div>
     </aside>
   );

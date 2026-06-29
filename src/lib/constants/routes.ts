@@ -15,6 +15,9 @@ export const ROUTES = {
 
   // ---- Dashboard (protected) ----
   DASHBOARD: "/dashboard",
+  POS: "/pos",
+  BOOKINGS: "/bookings",
+  ATTRACTIONS: "/attractions",
   TICKETS: "/tickets",
   CUSTOMERS: "/customers",
   USERS: "/users",
@@ -37,6 +40,10 @@ export const API_ROUTES = {
   TICKETS: "/api/tickets",
   REPORTS: "/api/reports",
   HEALTH: "/api/health",
+  // POS
+  ATTRACTIONS: "/api/attractions",
+  CUSTOMERS: "/api/customers",
+  BOOKINGS: "/api/bookings",
 } as const;
 
 /**

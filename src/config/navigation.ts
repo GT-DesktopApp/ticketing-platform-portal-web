@@ -10,11 +10,17 @@ import type { NavItem } from "@/types";
  * automatically. `icon` is a Lucide icon name resolved at render time.
  */
 export const mainNav: NavItem[] = [
+  // {
+  //   title: "Dashboard",
+  //   href: ROUTES.DASHBOARD,
+  //   icon: "LayoutDashboard",
+  //   permissions: [PERMISSIONS.DASHBOARD_VIEW],
+  // },
   {
-    title: "Dashboard",
-    href: ROUTES.DASHBOARD,
-    icon: "LayoutDashboard",
-    permissions: [PERMISSIONS.DASHBOARD_VIEW],
+    title: "Ticket Booking",
+    href: ROUTES.POS,
+    icon: "Ticket",
+    permissions: [PERMISSIONS.BOOKINGS_CREATE],
   },
   {
     title: "Tickets",

@@ -1,10 +1,12 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import bcrypt from "bcryptjs";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
 import type { Permission } from "@/lib/constants/permissions";
 import type { RoleKey } from "@/lib/constants/roles";
 import { prisma } from "@/lib/prisma";
+import { loginSchema } from "@/modules/auth/schemas/login.schema";
 
 import { authConfig } from "./auth.config";
 
@@ -65,29 +67,49 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       /**
-       * FOUNDATION STUB — full credentials login is implemented in a later
-       * milestone. The structure below shows exactly how it will work:
-       *
+       * Credentials verification:
        *   1. Validate the input with the auth module's Zod login schema.
-       *   2. Look up the user by email; reject if missing/inactive.
+       *   2. Look up the user by email; reject if missing/inactive/OAuth-only.
        *   3. Compare the password against `passwordHash` with bcrypt.
-       *   4. Load roles + permissions and return them on the user object so the
-       *      `jwt` callback can persist them.
-       *
-       * Returning `null` here keeps login disabled until we deliberately enable
-       * it, which is the intended "foundation only" behavior.
+       *   4. Load roles + permissions onto the returned user so the `jwt`
+       *      callback persists them (the role is resolved from the DB record —
+       *      no client-side role selection).
+       * Any failure returns `null`, which Auth.js surfaces as a generic
+       * "invalid credentials" error (no user enumeration).
        */
-      async authorize() {
-        // TODO(auth-milestone): implement credential verification.
-        // const parsed = loginSchema.safeParse(credentials);
-        // if (!parsed.success) return null;
-        // const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-        // if (!user || !user.isActive || !user.passwordHash) return null;
-        // const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
-        // if (!valid) return null;
-        // const { roles, permissions } = await loadUserAuthorization(user.id);
-        // return { id: user.id, email: user.email, name: user.name, image: user.image, roles, permissions };
-        return null;
+      async authorize(credentials) {
+        const parsed = loginSchema.safeParse(credentials);
+        if (!parsed.success) return null;
+
+        const user = await prisma.user.findUnique({
+          where: { email: parsed.data.email },
+        });
+        if (!user || !user.isActive || !user.passwordHash) return null;
+
+        const valid = await bcrypt.compare(
+          parsed.data.password,
+          user.passwordHash,
+        );
+        if (!valid) return null;
+
+        const { roles, permissions } = await loadUserAuthorization(user.id);
+
+        // Record the login timestamp (best-effort; don't block auth on failure).
+        await prisma.user
+          .update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          })
+          .catch(() => undefined);
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          roles,
+          permissions,
+        };
       },
     }),
   ],

@@ -12,6 +12,8 @@ export const appConfig = {
   /** Default locale and currency for formatting. Adjust per deployment region. */
   locale: "en-US",
   currency: "INR",
+  /** Where unauthenticated users are told to request access (login footer CTA). */
+  supportEmail: "admin@ticketingplatform.com",
   /** Support multi-branch / multi-location from day one (data is scoped, UI later). */
   multiTenancy: {
     branchesEnabled: true,
