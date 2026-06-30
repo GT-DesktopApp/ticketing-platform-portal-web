@@ -53,9 +53,12 @@ export async function POST(request: Request) {
     // Validate every line maps to a real category of this attraction.
     for (const item of input.items) {
       if (!categoryById.has(item.ticketCategoryId)) {
-        return fail("One or more ticket categories are invalid for this attraction.", {
-          status: HttpStatus.UNPROCESSABLE_ENTITY,
-        });
+        return fail(
+          "One or more ticket categories are invalid for this attraction.",
+          {
+            status: HttpStatus.UNPROCESSABLE_ENTITY,
+          },
+        );
       }
     }
 
@@ -84,59 +87,78 @@ export async function POST(request: Request) {
     const bookingNo = makeBookingNo();
 
     // --- Atomic write ---
-    const result = await prisma.$transaction(async (tx) => {
-      const booking = await tx.booking.create({
-        data: {
-          bookingNo,
-          attractionId: input.attractionId,
-          customerId: input.customerId ?? null,
-          status: "CONFIRMED",
-          isComplimentary: input.isComplimentary,
-          passReference: input.passReference ?? null,
-          subtotalPaise: subtotal,
-          taxPaise: tax,
-          roundOffPaise: roundOff,
-          totalPaise: total,
-          createdById: subject.userId,
-          items: { create: itemRows },
-        },
-      });
-
-      // Seat assignments + mark seats occupied (if any).
-      if (input.seatAssignments.length > 0) {
-        await tx.seatAssignment.createMany({
-          data: input.seatAssignments.map((s) => ({
-            bookingId: booking.id,
-            seatId: s.seatId,
-            passengerRef: s.passengerRef,
-          })),
-        });
-        await tx.seat.updateMany({
-          where: { id: { in: input.seatAssignments.map((s) => s.seatId) } },
-          data: { status: "OCCUPIED" },
-        });
-      }
-
-      // Payment row (skipped for complimentary).
-      if (!input.isComplimentary && input.payment) {
-        const change = Math.max(0, input.payment.amountPaidPaise - total);
-        await tx.payment.create({
+    // Keep ONLY the mutations that must succeed-or-fail together inside the
+    // transaction; the receipt re-fetch (read-only) runs after commit. This
+    // shortens the transaction's critical path so it comfortably clears the
+    // interactive-transaction timeout on a remote (Neon) database. The timeout
+    // is also raised to absorb network latency across the pooled connection.
+    const bookingId = await prisma.$transaction(
+      async (tx) => {
+        const booking = await tx.booking.create({
           data: {
-            bookingId: booking.id,
-            method: input.payment.method,
-            amountDuePaise: total,
-            amountPaidPaise: input.payment.amountPaidPaise,
-            changePaise: change,
-            status: "COMPLETED",
+            bookingNo,
+            attractionId: input.attractionId,
+            customerId: input.customerId ?? null,
+            status: "CONFIRMED",
+            isComplimentary: input.isComplimentary,
+            passReference: input.passReference ?? null,
+            subtotalPaise: subtotal,
+            taxPaise: tax,
+            roundOffPaise: roundOff,
+            totalPaise: total,
+            createdById: subject.userId,
+            items: { create: itemRows },
           },
+          select: { id: true },
         });
-      }
 
-      // Return the fully-populated booking for the receipt/confirmation screen.
-      return tx.booking.findUniqueOrThrow({
-        where: { id: booking.id },
-        include: { items: true, seatAssignments: true, payment: true, customer: true },
-      });
+        // Seat assignments + mark seats occupied (if any).
+        if (input.seatAssignments.length > 0) {
+          await tx.seatAssignment.createMany({
+            data: input.seatAssignments.map((s) => ({
+              bookingId: booking.id,
+              seatId: s.seatId,
+              passengerRef: s.passengerRef,
+            })),
+          });
+          await tx.seat.updateMany({
+            where: { id: { in: input.seatAssignments.map((s) => s.seatId) } },
+            data: { status: "OCCUPIED" },
+          });
+        }
+
+        // Payment row (skipped for complimentary).
+        if (!input.isComplimentary && input.payment) {
+          const change = Math.max(0, input.payment.amountPaidPaise - total);
+          await tx.payment.create({
+            data: {
+              bookingId: booking.id,
+              method: input.payment.method,
+              amountDuePaise: total,
+              amountPaidPaise: input.payment.amountPaidPaise,
+              changePaise: change,
+              status: "COMPLETED",
+            },
+          });
+        }
+
+        return booking.id;
+      },
+      // Remote DB round-trips can exceed Prisma's 5s default; give the whole
+      // transaction more headroom (and longer to acquire a pooled connection).
+      { timeout: 20_000, maxWait: 10_000 },
+    );
+
+    // Read-only fetch for the receipt/confirmation screen — outside the
+    // transaction so it never counts against the transaction timeout.
+    const result = await prisma.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      include: {
+        items: true,
+        seatAssignments: true,
+        payment: true,
+        customer: true,
+      },
     });
 
     return created(result, "Booking confirmed.");

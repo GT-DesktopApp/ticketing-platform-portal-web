@@ -1,262 +1,173 @@
 /**
- * POS demo seed — sample attractions, visitor categories, bogies + seats.
+ * POS demo seed — flat product catalog.
  *
- * Idempotent: re-running upserts attractions by a stable name and only creates
- * bogies/seats when missing. Run with:  npx tsx prisma/seed-pos.ts
+ * The Ticket Booking screen is a single flat grid of purchasable products (the
+ * `image.png` reference): each card has Category Name, Category Type, Sales
+ * Price, Barcode and Image, and clicking it adds it straight to the cart.
  *
- * Kept separate from the RBAC seed (seed.ts) so the two concerns stay decoupled.
+ * To keep the proven checkout / billing / booking-item machinery intact (those
+ * price off `TicketCategory` rows scoped to one `attractionId`), every product
+ * lives under ONE system attraction, "Catalog". Its `TicketCategory` rows ARE
+ * the cards — so the two-level DB relations stay, but the UI is flat.
+ *
+ * Idempotent: re-running wipes the old attractions (only when no booking history
+ * references them) and recreates the catalog + products. Run with:
+ *   npx tsx prisma/seed-pos.ts
  */
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-interface CategorySeed {
-  name: string;
-  pricePaise: number;
-  category?: string;
-  sacCode?: string;
-  barcode?: string;
-  note?: string;
-  /** Category-type name (CATEGORY mode), resolved to an id at seed time. */
-  categoryType?: string;
-}
+/** The single system attraction every product belongs to. */
+const CATALOG_NAME = "Catalog";
 
-/** Category types for the New Category dialog dropdown (CATEGORY-mode tickets). */
+/** Category types shown in the New Category dialog dropdown + on each card. */
 const CATEGORY_TYPES = [
-  "Toy Train (VIP)",
   "Toy Train (Regular)",
-  "Boat",
-  "Adventure",
+  "Toy Train (VIP)",
+  "Paddle Boat",
 ];
 
-interface AttractionSeed {
+interface ProductSeed {
   name: string;
-  type: string;
-  bookingType: "STANDARD" | "CATEGORY";
-  baseRatePaise: number;
-  durationMin?: number;
-  seatsPerTrip?: number;
-  requiresSeats: boolean;
-  openTime: string;
-  closeTime: string;
-  categories: CategorySeed[];
-  /** Bogie labels to create for seated attractions, each with `seatsPerTrip` seats. */
-  bogies?: string[];
+  /** Sales price in PAISE (e.g. ₹33.275 → 3328). */
+  pricePaise: number;
+  /** Category-type name, resolved to an id at seed time. */
+  categoryType: string;
+  barcode?: string;
+  /** Image URL/path; null renders the placeholder tile (matches the reference). */
+  image?: string | null;
+  sacCode?: string;
 }
 
-const ATTRACTIONS: AttractionSeed[] = [
+/**
+ * The products from the `image.png` reference. Prices are the rupee values shown
+ * on the cards, converted to paise (₹33.275 → 3328, ₹66.55 → 6655, …).
+ */
+const PRODUCTS: ProductSeed[] = [
   {
-    // CATEGORY mode: the attraction's own ticket categories (from the DB),
-    // grouped by category type. Rendered as the SAME vertical rows as STANDARD.
-    name: "Toy Train – Gulab Garh",
-    type: "Ride",
-    bookingType: "CATEGORY",
-    baseRatePaise: 8000,
-    durationMin: 20,
-    seatsPerTrip: 24,
-    requiresSeats: true,
-    openTime: "10:00 AM",
-    closeTime: "6:00 PM",
-    bogies: ["A", "B", "C"],
-    categories: [
-      { name: "Indian Kids (2-way)", pricePaise: 3328, sacCode: "996411", barcode: "IND-KID", categoryType: "Toy Train (Regular)" },
-      { name: "Indian Adult (2-way)", pricePaise: 6655, sacCode: "996411", barcode: "IND-ADT", categoryType: "Toy Train (Regular)" },
-      { name: "Foreigner Adult", pricePaise: 6655, sacCode: "996411", barcode: "FRN-ADT", categoryType: "Toy Train (Regular)" },
-      { name: "Foreigner Child", pricePaise: 13310, sacCode: "996411", barcode: "FRN-CHD", categoryType: "Toy Train (Regular)" },
-      { name: "VIP Couple", pricePaise: 18150, sacCode: "996411", barcode: "VIP-CPL", categoryType: "Toy Train (VIP)" },
-      { name: "VIP Family", pricePaise: 36300, sacCode: "996411", barcode: "VIP-FAM", categoryType: "Toy Train (VIP)" },
-      { name: "Boat (2)", pricePaise: 6655, sacCode: "996411", barcode: "BOAT-2", categoryType: "Boat" },
-      { name: "Boat (4)", pricePaise: 13310, sacCode: "996411", barcode: "BOAT-4", categoryType: "Boat" },
-    ],
+    name: "Indian kids (2way)",
+    pricePaise: 3328,
+    categoryType: "Toy Train (Regular)",
+    barcode: "IND-KID",
+    sacCode: "996411",
   },
   {
-    // STANDARD mode: fixed visitor categories.
-    name: "Amber Fort",
-    type: "Fort",
-    bookingType: "STANDARD",
-    baseRatePaise: 25000,
-    requiresSeats: false,
-    openTime: "9:00 AM",
-    closeTime: "6:00 PM",
-    categories: [
-      { name: "Adult", pricePaise: 25000, sacCode: "996412" },
-      { name: "Child (5–12 yrs)", pricePaise: 12500, sacCode: "996412" },
-      { name: "Senior Citizen (60+ yrs)", pricePaise: 20000, sacCode: "996412" },
-      { name: "Student (ID Required)", pricePaise: 10000, sacCode: "996412", note: "ID Required" },
-      { name: "Foreigner", pricePaise: 60000, sacCode: "996412" },
-    ],
+    name: "Indian (2way)",
+    pricePaise: 6655,
+    categoryType: "Toy Train (Regular)",
+    barcode: "IND-ADT",
+    sacCode: "996411",
   },
   {
-    name: "City Palace",
-    type: "Palace",
-    bookingType: "STANDARD",
-    baseRatePaise: 20000,
-    requiresSeats: false,
-    openTime: "9:30 AM",
-    closeTime: "5:30 PM",
-    categories: [
-      { name: "Adult", pricePaise: 20000, sacCode: "996412" },
-      { name: "Child (5–12 yrs)", pricePaise: 10000, sacCode: "996412" },
-      { name: "Foreigner", pricePaise: 50000, sacCode: "996412" },
-    ],
+    name: "FOREIGNER S. (2way)",
+    pricePaise: 6655,
+    categoryType: "Toy Train (Regular)",
+    barcode: "FRN-STD",
+    sacCode: "996411",
   },
   {
-    name: "Jaipur Zoo",
-    type: "Zoo",
-    bookingType: "STANDARD",
-    baseRatePaise: 8000,
-    requiresSeats: false,
-    openTime: "8:00 AM",
-    closeTime: "6:00 PM",
-    categories: [
-      { name: "Adult", pricePaise: 8000, sacCode: "996413" },
-      { name: "Child (5–12 yrs)", pricePaise: 4000, sacCode: "996413" },
-      { name: "Senior Citizen (60+ yrs)", pricePaise: 6000, sacCode: "996413" },
-    ],
+    name: "FOREIGER B. (2way)",
+    pricePaise: 13310,
+    categoryType: "Toy Train (Regular)",
+    barcode: "FRN-BIG",
+    sacCode: "996411",
+  },
+  {
+    name: "VIP COUPLE IND (2way)",
+    pricePaise: 18150,
+    categoryType: "Toy Train (VIP)",
+    barcode: "VIP-CPL",
+    sacCode: "996411",
+  },
+  {
+    name: "Paddle Boat 2",
+    pricePaise: 6655,
+    categoryType: "Paddle Boat",
+    barcode: "BOAT-2",
+    sacCode: "996411",
+  },
+  {
+    name: "Paddle Boat 4",
+    pricePaise: 13310,
+    categoryType: "Paddle Boat",
+    barcode: "BOAT-4",
+    sacCode: "996411",
   },
 ];
 
-async function seedAttraction(
-  a: AttractionSeed,
-  categoryTypeIds: Map<string, string>,
-) {
-  // Upsert the attraction by name (no natural unique key, so find-or-create).
-  const existing = await prisma.attraction.findFirst({ where: { name: a.name } });
-
-  const attraction = existing
-    ? await prisma.attraction.update({
-        where: { id: existing.id },
-        data: {
-          type: a.type,
-          bookingType: a.bookingType,
-          baseRatePaise: a.baseRatePaise,
-          durationMin: a.durationMin ?? null,
-          seatsPerTrip: a.seatsPerTrip ?? null,
-          requiresSeats: a.requiresSeats,
-          openTime: a.openTime,
-          closeTime: a.closeTime,
-          isActive: true,
-        },
-      })
-    : await prisma.attraction.create({
-        data: {
-          name: a.name,
-          type: a.type,
-          bookingType: a.bookingType,
-          baseRatePaise: a.baseRatePaise,
-          durationMin: a.durationMin ?? null,
-          seatsPerTrip: a.seatsPerTrip ?? null,
-          requiresSeats: a.requiresSeats,
-          openTime: a.openTime,
-          closeTime: a.closeTime,
-        },
-      });
-
-  // Ticket products: upsert by (attractionId, name) and prune stale rows so the
-  // rename from visitor-categories to products takes effect cleanly.
-  const keepNames = new Set(a.categories.map((c) => c.name));
-  const existingForAttraction = await prisma.ticketCategory.findMany({
-    where: { attractionId: attraction.id },
-  });
-  // Remove products no longer in the seed (only if not referenced by a booking).
-  for (const old of existingForAttraction) {
-    if (keepNames.has(old.name)) continue;
-    const refs = await prisma.bookingItem.count({
-      where: { ticketCategoryId: old.id },
-    });
-    if (refs === 0) {
-      await prisma.ticketCategory.delete({ where: { id: old.id } });
-    } else {
-      // Referenced by history → deactivate instead of delete.
-      await prisma.ticketCategory.update({
-        where: { id: old.id },
-        data: { isActive: false },
-      });
-    }
+/**
+ * Remove every existing attraction (cascades to its ticket categories / bogies /
+ * seats). Guarded: if any booking history references a ticket category we must
+ * NOT delete it — deactivate those attractions instead so FKs stay valid.
+ */
+async function wipeAttractions() {
+  const referenced = await prisma.bookingItem.count();
+  if (referenced > 0) {
+    await prisma.attraction.updateMany({ data: { isActive: false } });
+    console.log(
+      `  ! ${referenced} booking item(s) exist — deactivated old attractions instead of deleting.`,
+    );
+    return;
   }
-
-  for (let i = 0; i < a.categories.length; i++) {
-    const c = a.categories[i];
-    const data = {
-      pricePaise: c.pricePaise,
-      category: c.category ?? null,
-      sacCode: c.sacCode ?? null,
-      barcode: c.barcode ?? null,
-      categoryTypeId: c.categoryType
-        ? (categoryTypeIds.get(c.categoryType) ?? null)
-        : null,
-      note: c.note ?? null,
-      sortOrder: i,
-      isActive: true,
-    };
-    const existingCat = await prisma.ticketCategory.findFirst({
-      where: { attractionId: attraction.id, name: c.name },
-    });
-    if (existingCat) {
-      await prisma.ticketCategory.update({
-        where: { id: existingCat.id },
-        data,
-      });
-    } else {
-      await prisma.ticketCategory.create({
-        data: { attractionId: attraction.id, name: c.name, ...data },
-      });
-    }
-  }
-
-  // Bogies + seats for seated attractions (created once, never duplicated).
-  if (a.requiresSeats && a.bogies && a.seatsPerTrip) {
-    for (let seq = 0; seq < a.bogies.length; seq++) {
-      const label = a.bogies[seq];
-      const existingBogie = await prisma.bogie.findUnique({
-        where: { attractionId_label: { attractionId: attraction.id, label } },
-      });
-      if (existingBogie) continue;
-
-      const bogie = await prisma.bogie.create({
-        data: {
-          attractionId: attraction.id,
-          label,
-          capacity: a.seatsPerTrip,
-          sequence: seq,
-          status: seq === 0 ? "ACTIVE" : "LOCKED",
-        },
-      });
-
-      // Seats numbered 1..capacity; even=right, odd=left (matches the grid).
-      const seatData = Array.from({ length: a.seatsPerTrip }, (_, n) => {
-        const number = n + 1;
-        return {
-          bogieId: bogie.id,
-          number,
-          side: number % 2 === 0 ? "right" : "left",
-        };
-      });
-      await prisma.seat.createMany({ data: seatData });
-    }
-  }
-
-  return attraction;
+  const { count } = await prisma.attraction.deleteMany({});
+  console.log(`  ✓ wiped ${count} existing attraction(s) (cascade)`);
 }
 
 async function main() {
-  console.log("Seeding POS demo data…");
+  console.log("Seeding POS flat catalog…");
 
-  // Category types (for CATEGORY-mode tickets + the dialog dropdown).
+  await wipeAttractions();
+
+  // Category types (for the New Category dialog + the card's "type" line).
   const categoryTypeIds = new Map<string, string>();
   for (const name of CATEGORY_TYPES) {
     const existing = await prisma.categoryType.findUnique({ where: { name } });
     const row =
-      existing ??
-      (await prisma.categoryType.create({ data: { name } }));
+      existing ?? (await prisma.categoryType.create({ data: { name } }));
     categoryTypeIds.set(name, row.id);
   }
   console.log(`  ✓ ${CATEGORY_TYPES.length} category types`);
 
-  for (const a of ATTRACTIONS) {
-    const at = await seedAttraction(a, categoryTypeIds);
-    console.log(`  ✓ ${at.name} (${a.bookingType})`);
+  // The single catalog attraction that holds every product.
+  const catalog =
+    (await prisma.attraction.findFirst({ where: { name: CATALOG_NAME } })) ??
+    (await prisma.attraction.create({
+      data: {
+        name: CATALOG_NAME,
+        type: "Catalog",
+        bookingType: "CATEGORY",
+        baseRatePaise: 0,
+        requiresSeats: false,
+        isActive: true,
+      },
+    }));
+
+  // Products (TicketCategory rows under the catalog). Upsert by name so re-runs
+  // don't duplicate; sortOrder preserves the reference ordering.
+  for (let i = 0; i < PRODUCTS.length; i++) {
+    const p = PRODUCTS[i];
+    const data = {
+      pricePaise: p.pricePaise,
+      categoryTypeId: categoryTypeIds.get(p.categoryType) ?? null,
+      barcode: p.barcode ?? null,
+      image: p.image ?? null,
+      sacCode: p.sacCode ?? null,
+      sortOrder: i,
+      isActive: true,
+    };
+    const existing = await prisma.ticketCategory.findFirst({
+      where: { attractionId: catalog.id, name: p.name },
+    });
+    if (existing) {
+      await prisma.ticketCategory.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.ticketCategory.create({
+        data: { attractionId: catalog.id, name: p.name, ...data },
+      });
+    }
   }
+  console.log(`  ✓ ${PRODUCTS.length} catalog products`);
 
   // One sample customer so the lookup has a hit.
   await prisma.customer.upsert({

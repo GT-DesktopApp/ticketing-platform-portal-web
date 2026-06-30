@@ -6,6 +6,25 @@ import { z } from "zod";
  * frontend forms reuse the inferred types.
  */
 
+/**
+ * Create-product payload (the "New Category" dialog on the booking screen).
+ *
+ * A product is a `TicketCategory` row under the single catalog attraction. The
+ * five fields match the form: name, category type, sales price, barcode, image.
+ * `salesPrice` is entered in RUPEES; the API converts it to paise.
+ */
+export const createTicketProductSchema = z.object({
+  name: z.string().trim().min(1, "Category name is required"),
+  categoryTypeId: z.string().uuid().optional().nullable(),
+  /** Sales price in rupees (form value); converted to paise server-side. */
+  salesPrice: z.number().positive("Enter a valid sales price"),
+  barcode: z.string().trim().optional().nullable(),
+  image: z.string().trim().optional().nullable(),
+});
+export type CreateTicketProductInput = z.infer<
+  typeof createTicketProductSchema
+>;
+
 /** Create-customer payload (Add New Customer in the Customer step). */
 export const createCustomerSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -14,7 +33,12 @@ export const createCustomerSchema = z.object({
     .trim()
     .min(7, "Enter a valid mobile number")
     .max(20, "Mobile number is too long"),
-  email: z.string().trim().email("Enter a valid email").optional().or(z.literal("")),
+  email: z
+    .string()
+    .trim()
+    .email("Enter a valid email")
+    .optional()
+    .or(z.literal("")),
   notes: z.string().trim().optional(),
 });
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
@@ -52,12 +76,15 @@ export const createBookingSchema = z
     seatAssignments: z.array(seatAssignmentSchema).default([]),
     payment: paymentSchema.optional(),
   })
-  .refine(
-    (data) => data.isComplimentary || data.payment !== undefined,
-    { message: "Payment is required for non-complimentary bookings", path: ["payment"] },
-  )
+  .refine((data) => data.isComplimentary || data.payment !== undefined, {
+    message: "Payment is required for non-complimentary bookings",
+    path: ["payment"],
+  })
   .refine(
     (data) => !data.isComplimentary || (data.passReference?.length ?? 0) > 0,
-    { message: "Pass reference is required for complimentary bookings", path: ["passReference"] },
+    {
+      message: "Pass reference is required for complimentary bookings",
+      path: ["passReference"],
+    },
   );
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;

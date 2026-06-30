@@ -177,6 +177,22 @@ export function formatCurrency(rupees: number): string {
   }).format(rupees);
 }
 
+/**
+ * Compact price tag for product cards, e.g. 33.275 → "₹33.275", 6655 paise →
+ * "₹66.55", 13310 paise → "₹133.1". Shows the exact rupee value with trailing
+ * zeros trimmed (matches the booking-screen reference). Use this for the card
+ * label only — the cart/billing always uses `formatCurrency` (2 dp) for the
+ * authoritative invoice math.
+ */
+export function formatPriceTag(rupees: number): string {
+  // Up to 3 dp, then strip trailing zeros and any dangling decimal point.
+  const text = rupees
+    .toFixed(3)
+    .replace(/\.?0+$/, "")
+    .replace(/(\.\d*?)0+$/, "$1");
+  return `₹${text}`;
+}
+
 /** Sign-aware color class for an adjustment value (green +, red −, gray 0). */
 export type AdjustmentTone = "positive" | "negative" | "neutral";
 export function adjustmentTone(value: number): AdjustmentTone {

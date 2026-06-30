@@ -2,72 +2,71 @@
 
 import { Plus, Ticket } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ROUTES } from "@/lib/constants/routes";
 import { AddItemModal } from "@/modules/pos/components/booking/add-item-modal";
 import { AttractionPanel } from "@/modules/pos/components/booking/attraction-panel";
-import { BookingPanel } from "@/modules/pos/components/booking/booking-panel";
+import { CartPanel } from "@/modules/pos/components/booking/cart-panel";
 import { useAttractions } from "@/modules/pos/hooks/use-pos";
 import { useCartStore } from "@/modules/pos/store/cart-store";
-import type { Attraction } from "@/modules/pos/types";
 
 /**
- * Ticket Booking (POS) page — state-driven progressive disclosure.
+ * Ticket Booking (POS) screen — a flat product catalog.
  *
- * Workflow:
- *   • No attraction selected → render ONLY the AttractionPanel, full width.
- *   • An attraction selected → reveal the two-column layout (attractions list +
- *     BookingPanel) with a smooth 250ms transition.
- *   • Removing the selection ("Change Attraction") resets the booking state and
- *     expands the list back to full width — no stale booking data remains.
+ * The grid shows every catalog product (name / category type / sales price /
+ * barcode / image). Clicking a card adds it to the cart; once in the cart a −/+
+ * stepper on the card adjusts the quantity. There is no "Visitor Categories &
+ * Quantity" step and no per-attraction selection.
  *
- * Centralised state lives in the Zustand cart store (selectedAttraction +
- * per-category quantities), shared with the later wizard steps. Business logic
- * (billing) lives in utils/billing — this component only orchestrates layout.
+ * The Cart & Billing panel is revealed only when the cart has at least one item:
+ * while empty, the product grid fills the full width; adding the first item
+ * smoothly splits the layout, and emptying the cart collapses it back.
+ *
+ * The single "Catalog" attraction (the API returns it as the only attractions
+ * entry) is synced into the cart store so the downstream customer/payment steps
+ * still have `selectedAttraction` + `tickets` to price the sale.
  */
 export function BookingScreen() {
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
   const { data: attractions = [], isLoading, error } = useAttractions();
 
-  const selected = useCartStore((s) => s.selectedAttraction);
+  const catalog = attractions[0] ?? null;
+  const products = useMemo(() => catalog?.ticketProducts ?? [], [catalog]);
+
   const tickets = useCartStore((s) => s.tickets);
-  const setAttraction = useCartStore((s) => s.setAttraction);
+  const syncCatalog = useCartStore((s) => s.syncCatalog);
   const updateTicketQuantity = useCartStore((s) => s.updateTicketQuantity);
   const setTicketQuantity = useCartStore((s) => s.setTicketQuantity);
   const clearCart = useCartStore((s) => s.clearCart);
 
-  const hasSelection = selected !== null;
+  // Auto-select the catalog whenever it (re)loads. syncCatalog preserves the
+  // cart when it's the same catalog, so refetches don't wipe in-progress items.
+  useEffect(() => {
+    if (catalog) syncCatalog(catalog);
+  }, [catalog, syncCatalog]);
 
-  // Stable callbacks so memoized children don't re-render on every parent tick.
-  const handleSelect = useCallback(
-    (attraction: Attraction) => setAttraction(attraction),
-    [setAttraction],
-  );
-  const handleChangeAttraction = useCallback(
-    () => setAttraction(null), // store resets tickets + seats on deselect
-    [setAttraction],
-  );
-  // +/− on a category row → update the cart instantly (no Add button).
+  // +1 / −1 on a card's stepper (−1 to 0 removes it from the cart).
   const handleIncrease = useCallback(
-    (categoryId: string) => updateTicketQuantity(categoryId, 1),
+    (productId: string) => updateTicketQuantity(productId, 1),
     [updateTicketQuantity],
   );
   const handleDecrease = useCallback(
-    (categoryId: string) => updateTicketQuantity(categoryId, -1),
+    (productId: string) => updateTicketQuantity(productId, -1),
     [updateTicketQuantity],
   );
-  // Remove a category from the cart entirely (cart delete).
+  // Remove a product from the cart entirely (cart delete button).
   const handleRemoveFromCart = useCallback(
-    (categoryId: string) => setTicketQuantity(categoryId, 0),
+    (productId: string) => setTicketQuantity(productId, 0),
     [setTicketQuantity],
   );
   const handleCheckout = useCallback(
     () => router.push(`${ROUTES.POS}/customer`),
     [router],
   );
-  const handleNewCategory = useCallback(() => setAddOpen(true), []);
+
+  const hasItems = Object.keys(tickets).length > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -82,42 +81,42 @@ export function BookingScreen() {
         <button
           type="button"
           onClick={handleCheckout}
-          disabled={!hasSelection}
+          disabled={!hasItems}
           className="flex h-12 items-center gap-2 rounded-[10px] bg-[var(--pos-amber)] px-5 text-[15px] font-semibold text-[#1c1407] transition-all duration-150 hover:bg-[var(--pos-amber-600)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="size-4" /> New Booking
         </button>
       </header>
 
-      {/* Layout: single column (no selection) → two columns (selection). */}
+      {/*
+        Flat catalog grid (left). The Cart & Billing panel (right) appears only
+        once the cart has items: the grid is full-width while empty and smoothly
+        splits to 65/35 when the first item is added.
+      */}
       <div
-        className={`grid gap-6 transition-all duration-[250ms] ${
-          hasSelection ? "grid-cols-1 xl:grid-cols-[35%_65%]" : "grid-cols-1"
+        className={`grid grid-cols-1 gap-6 transition-all duration-300 ${
+          hasItems ? "xl:grid-cols-[65%_35%]" : "xl:grid-cols-1"
         }`}
       >
         <AttractionPanel
-          attractions={attractions}
+          products={products}
+          quantities={tickets}
           isLoading={isLoading}
           error={error}
-          selectedId={selected?.id ?? null}
-          onSelect={handleSelect}
+          onIncrease={handleIncrease}
+          onDecrease={handleDecrease}
           onAddItem={() => setAddOpen(true)}
-          fullWidth={!hasSelection}
+          fullWidth={!hasItems}
         />
 
-        {/* Booking panel mounts ONLY when an attraction is selected. */}
-        {hasSelection && selected && (
+        {hasItems && (
           <div className="booking-panel-enter">
-            <BookingPanel
-              attraction={selected}
+            <CartPanel
+              products={products}
               cart={tickets}
-              onIncrease={handleIncrease}
-              onDecrease={handleDecrease}
               onRemoveFromCart={handleRemoveFromCart}
               onClear={clearCart}
-              onChangeAttraction={handleChangeAttraction}
               onCheckout={handleCheckout}
-              onNewCategory={handleNewCategory}
             />
           </div>
         )}

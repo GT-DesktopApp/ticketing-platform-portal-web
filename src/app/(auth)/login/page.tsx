@@ -14,9 +14,7 @@ import {
   InputField,
   LoginButton,
   LoginCard,
-  type LoginRole,
   PasswordField,
-  RoleTabs,
 } from "@/modules/auth/components";
 import {
   type LoginInput,
@@ -26,10 +24,11 @@ import {
 /**
  * Premium login experience.
  *
- * The form remains a single Email/Password credentials flow: the user's role is
+ * The form is a single Email/Password credentials flow: the user's role is
  * resolved from the database record on the server during verification, never
- * from the client. The Admin/Manager/Staff tabs are a **visual** selector only
- * (see {@link RoleTabs}) and do not influence authentication.
+ * from the client. (A visual-only Admin/Manager/Staff `RoleTabs` selector is
+ * available in the auth components and can be dropped in above the form if a
+ * persona hint is ever wanted — it does not influence authentication.)
  *
  * The page is pure composition of the small `auth` UI components — no markup or
  * styling is duplicated here.
@@ -38,7 +37,6 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
-  const [role, setRole] = useState<LoginRole>("admin");
 
   const {
     register,
@@ -73,8 +71,6 @@ function LoginForm() {
         title="Welcome Back!"
         subtitle="Login to continue managing tickets, bookings and visitors."
       >
-        {/* <RoleTabs value={role} onChange={setRole} /> */}
-
         {serverError && (
           <div
             role="alert"

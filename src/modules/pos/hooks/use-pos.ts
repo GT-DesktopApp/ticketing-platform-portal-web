@@ -4,12 +4,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient } from "@/lib/api/client";
 import { API_ROUTES } from "@/lib/constants/routes";
-import type { CreateBookingInput, CreateCustomerInput } from "@/modules/pos/schemas/booking.schema";
+import type {
+  CreateBookingInput,
+  CreateCustomerInput,
+  CreateTicketProductInput,
+} from "@/modules/pos/schemas/booking.schema";
 import type {
   Attraction,
   BogieView,
   CategoryType,
   Customer,
+  TicketProduct,
 } from "@/modules/pos/types";
 
 /** Query keys, centralised so invalidation stays consistent. */
@@ -26,7 +31,9 @@ export function useCategoryTypes() {
     queryKey: posKeys.categoryTypes(),
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const { data } = await apiClient.get<CategoryType[]>("/api/category-types");
+      const { data } = await apiClient.get<CategoryType[]>(
+        "/api/category-types",
+      );
       return data;
     },
   });
@@ -88,6 +95,27 @@ export function useCreateCustomer() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customers"] });
+    },
+  });
+}
+
+/**
+ * Create a new catalog product (the "New Category" dialog). On success the
+ * attractions query is invalidated so the new card appears in the grid
+ * immediately.
+ */
+export function useCreateTicketProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateTicketProductInput) => {
+      const { data } = await apiClient.post<TicketProduct>(
+        API_ROUTES.ATTRACTIONS,
+        input,
+      );
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["attractions"] });
     },
   });
 }

@@ -23,6 +23,13 @@ export interface CartState {
   seats: Record<string, SeatSelection>;
 
   setAttraction: (attraction: Attraction | null) => void;
+  /**
+   * Sync the auto-selected catalog attraction from the server WITHOUT clearing
+   * the cart. Refreshes the product data (prices/new items) on every load but
+   * preserves the in-progress cart as long as it's the same catalog; switching
+   * to a different catalog id resets tickets/seats.
+   */
+  syncCatalog: (attraction: Attraction) => void;
   updateTicketQuantity: (categoryId: string, amount: number) => void;
   setTicketQuantity: (categoryId: string, quantity: number) => void;
   setCustomer: (customer: Customer | null) => void;
@@ -66,6 +73,16 @@ export const useCartStore = create<CartState>()(
           selectedAttraction: attraction,
           tickets: {},
           seats: {},
+        }),
+
+      syncCatalog: (attraction) =>
+        set((state) => {
+          const sameCatalog = state.selectedAttraction?.id === attraction.id;
+          return sameCatalog
+            ? // Same catalog: refresh product data, keep the cart intact.
+              { selectedAttraction: attraction }
+            : // Different/first catalog: adopt it and reset any stale choices.
+              { selectedAttraction: attraction, tickets: {}, seats: {} };
         }),
 
       updateTicketQuantity: (categoryId, amount) =>
@@ -115,10 +132,11 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: "pos-cart",
-      // Bump when the persisted shape changes. v2: attraction.categories was
-      // renamed to attraction.ticketProducts — any older cached cart is dropped
-      // on load so we never read an attraction with an undefined products array.
-      version: 2,
+      // Bump when the persisted shape changes. v3: the booking screen is now a
+      // flat product catalog (one auto-selected "Catalog" attraction); the
+      // selectedAttraction is sourced from the server each load, so any older
+      // cached cart is dropped to avoid reading a stale/legacy attraction.
+      version: 3,
       migrate: () => ({}) as Partial<CartState>,
       // sessionStorage: survives refresh, gone when the tab closes. SSR-safe —
       // createJSONStorage lazily reads sessionStorage only in the browser.

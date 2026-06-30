@@ -52,5 +52,6 @@ export const API_ROUTES = {
  */
 export const PUBLIC_ROUTES: string[] = [ROUTES.LOGIN];
 
-/** Where to send users after a successful login. */
-export const DEFAULT_LOGIN_REDIRECT: string = ROUTES.DASHBOARD;
+/** Where to send users after a successful login. Ticket Booking (POS) is the
+ *  primary landing page; the Dashboard is currently disabled. */
+export const DEFAULT_LOGIN_REDIRECT: string = ROUTES.POS;

@@ -58,7 +58,7 @@ export const CartSection = memo(function CartSection({
             No tickets added yet.
           </p>
           <p className="mt-1 text-[13px] text-[var(--login-text-muted)]">
-            Select visitor quantities to continue.
+            Click an item to add it to the cart.
           </p>
         </div>
       )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +20,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ImageUpload } from "@/modules/pos/components/booking/image-upload";
-import { useCategoryTypes } from "@/modules/pos/hooks/use-pos";
+import {
+  useCategoryTypes,
+  useCreateTicketProduct,
+} from "@/modules/pos/hooks/use-pos";
 
 interface Props {
   open: boolean;
@@ -56,6 +60,7 @@ const EMPTY: FormState = {
  */
 export function AddItemModal({ open, onOpenChange }: Props) {
   const { data: categoryTypes = [] } = useCategoryTypes();
+  const createProduct = useCreateTicketProduct();
   const [form, setForm] = useState<FormState>(EMPTY);
   const [errors, setErrors] = useState<FormErrors>({});
 
@@ -76,12 +81,28 @@ export function AddItemModal({ open, onOpenChange }: Props) {
 
   function handleSave() {
     if (!validate()) return;
-    // Persisting a new category is a later milestone; the validated payload is:
-    //   { name, categoryTypeId, salesPrice (rupees), barcode, image }
-    // Close + reset for now.
-    setForm(EMPTY);
-    setErrors({});
-    onOpenChange(false);
+    createProduct.mutate(
+      {
+        name: form.name.trim(),
+        categoryTypeId: form.categoryTypeId || null,
+        salesPrice: parseFloat(form.salesPrice),
+        barcode: form.barcode.trim() || null,
+        image: form.image,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Item added.");
+          setForm(EMPTY);
+          setErrors({});
+          onOpenChange(false);
+        },
+        onError: (e) => {
+          toast.error(
+            e instanceof Error ? e.message : "Couldn’t add the item.",
+          );
+        },
+      },
+    );
   }
 
   function handleCancel() {
@@ -172,11 +193,19 @@ export function AddItemModal({ open, onOpenChange }: Props) {
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
-            <Button variant="outline" onClick={handleCancel}>
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              disabled={createProduct.isPending}
+            >
               Cancel
             </Button>
-            <Button className="pos-btn-amber font-semibold" onClick={handleSave}>
-              Save Category
+            <Button
+              className="pos-btn-amber font-semibold"
+              onClick={handleSave}
+              disabled={createProduct.isPending}
+            >
+              {createProduct.isPending ? "Saving…" : "Save Category"}
             </Button>
           </div>
         </div>
