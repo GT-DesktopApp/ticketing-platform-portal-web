@@ -28,6 +28,7 @@ export function PaymentStep() {
   const seats = useCartStore((s) => s.seats);
   const isComplimentary = useCartStore((s) => s.isComplimentary);
   const passReference = useCartStore((s) => s.passReference);
+  const comp = useCartStore((s) => s.complimentary);
   const clearCart = useCartStore((s) => s.clearCart);
 
   const createBooking = useCreateBooking();
@@ -62,11 +63,36 @@ export function PaymentStep() {
     }));
 
     try {
+      // Map the string-based comp form to the schema's numeric/optional shape.
+      const toInt = (v: string) =>
+        v.trim() === "" ? null : Number.parseInt(v, 10);
+      const complimentary = isComplimentary
+        ? {
+            passNo: comp.passNo || undefined,
+            passDate: comp.passDate || undefined,
+            discountPercent: toInt(comp.discountPercent),
+            guestName: comp.guestName || undefined,
+            guestMobile: comp.guestMobile || undefined,
+            guestDepartment: comp.guestDepartment || undefined,
+            guestDesignation: comp.guestDesignation || undefined,
+            adultCount: toInt(comp.adultCount),
+            childCount: toInt(comp.childCount),
+            referenceName: comp.referenceName || undefined,
+            referenceMobile: comp.referenceMobile || undefined,
+            referenceDepartment: comp.referenceDepartment || undefined,
+            referenceDesignation: comp.referenceDesignation || undefined,
+          }
+        : undefined;
+
       await createBooking.mutateAsync({
         attractionId: attraction.id,
         customerId: customer?.id ?? null,
         isComplimentary,
-        passReference: isComplimentary ? passReference : undefined,
+        // Use the guest name as the pass reference when comp (schema requires it).
+        passReference: isComplimentary
+          ? passReference || comp.guestName || comp.passNo
+          : undefined,
+        complimentary,
         items,
         seatAssignments,
         payment: isComplimentary

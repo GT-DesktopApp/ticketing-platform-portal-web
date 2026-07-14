@@ -12,6 +12,39 @@ import type { Attraction, Customer, SeatSelection } from "@/modules/pos/types";
  * sessionStorage so a refresh mid-booking doesn't lose the cart, but it clears
  * when the sale completes.
  */
+/** Full complimentary-pass form (Pass / Guest / Visitor count / Reference). */
+export interface ComplimentaryDetails {
+  passNo: string;
+  passDate: string;
+  discountPercent: string;
+  guestName: string;
+  guestMobile: string;
+  guestDepartment: string;
+  guestDesignation: string;
+  adultCount: string;
+  childCount: string;
+  referenceName: string;
+  referenceMobile: string;
+  referenceDepartment: string;
+  referenceDesignation: string;
+}
+
+export const EMPTY_COMPLIMENTARY: ComplimentaryDetails = {
+  passNo: "",
+  passDate: "",
+  discountPercent: "",
+  guestName: "",
+  guestMobile: "",
+  guestDepartment: "",
+  guestDesignation: "",
+  adultCount: "",
+  childCount: "",
+  referenceName: "",
+  referenceMobile: "",
+  referenceDepartment: "",
+  referenceDesignation: "",
+};
+
 export interface CartState {
   selectedAttraction: Attraction | null;
   /** category id -> quantity */
@@ -19,6 +52,8 @@ export interface CartState {
   customer: Customer | null;
   isComplimentary: boolean;
   passReference: string;
+  /** Full complimentary form (only meaningful when isComplimentary). */
+  complimentary: ComplimentaryDetails;
   /** seat selections keyed by passengerRef ("Adult 1" -> selection) */
   seats: Record<string, SeatSelection>;
 
@@ -35,6 +70,8 @@ export interface CartState {
   setCustomer: (customer: Customer | null) => void;
   setComplimentary: (value: boolean) => void;
   setPassReference: (ref: string) => void;
+  /** Patch one or more fields of the complimentary form. */
+  setComplimentaryDetails: (patch: Partial<ComplimentaryDetails>) => void;
   assignSeat: (passengerRef: string, selection: SeatSelection | null) => void;
   clearSeats: () => void;
   clearCart: () => void;
@@ -59,6 +96,7 @@ const initialState = {
   customer: null as Customer | null,
   isComplimentary: false,
   passReference: "",
+  complimentary: EMPTY_COMPLIMENTARY,
   seats: {} as Record<string, SeatSelection>,
 };
 
@@ -112,6 +150,8 @@ export const useCartStore = create<CartState>()(
       setCustomer: (customer) => set({ customer }),
       setComplimentary: (value) => set({ isComplimentary: value }),
       setPassReference: (passReference) => set({ passReference }),
+      setComplimentaryDetails: (patch) =>
+        set((state) => ({ complimentary: { ...state.complimentary, ...patch } })),
 
       assignSeat: (passengerRef, selection) =>
         set((state) => {
@@ -156,6 +196,7 @@ export const useCartStore = create<CartState>()(
           customer: state.customer,
           isComplimentary: state.isComplimentary,
           passReference: state.passReference,
+          complimentary: state.complimentary,
           seats: state.seats,
         }) as CartState,
     },

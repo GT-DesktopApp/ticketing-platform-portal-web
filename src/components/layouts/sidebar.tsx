@@ -8,6 +8,7 @@ import { signOut } from "next-auth/react";
 import { adminNav, mainNav } from "@/config/navigation";
 import { usePermissions } from "@/hooks/use-permissions";
 import { ROUTES } from "@/lib/constants/routes";
+import { useUiStore } from "@/lib/stores/ui-store";
 import { cn } from "@/lib/utils";
 import type { NavItem } from "@/types";
 
@@ -19,7 +20,13 @@ function Icon({ name, className }: { name: string; className?: string }) {
   return <Cmp className={className} aria-hidden />;
 }
 
-function NavSection({ items }: { items: NavItem[] }) {
+function NavSection({
+  items,
+  collapsed,
+}: {
+  items: NavItem[];
+  collapsed: boolean;
+}) {
   const pathname = usePathname();
   const { canAny } = usePermissions();
 
@@ -30,7 +37,7 @@ function NavSection({ items }: { items: NavItem[] }) {
   if (visible.length === 0) return null;
 
   return (
-    <nav className="space-y-1 px-3">
+    <nav className={cn("space-y-1", collapsed ? "px-2" : "px-3")}>
       {visible.map((item) => {
         const active =
           pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -38,15 +45,22 @@ function NavSection({ items }: { items: NavItem[] }) {
           <Link
             key={item.href}
             href={item.href}
+            // In collapsed mode the label is hidden; the native title acts as a
+            // tooltip so icons stay identifiable.
+            title={collapsed ? item.title : undefined}
+            aria-label={item.title}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium transition-colors duration-150",
+              "flex items-center rounded-lg text-[14px] font-medium transition-colors duration-150",
+              collapsed
+                ? "justify-center p-2.5"
+                : "gap-3 px-3 py-2.5",
               active
                 ? "bg-[var(--pos-amber)] text-[#1c1407] shadow-sm"
                 : "text-white/75 hover:bg-white/10 hover:text-white",
             )}
           >
             <Icon name={item.icon} className="size-[18px] shrink-0" />
-            <span className="truncate">{item.title}</span>
+            {!collapsed && <span className="truncate">{item.title}</span>}
           </Link>
         );
       })}
@@ -55,41 +69,79 @@ function NavSection({ items }: { items: NavItem[] }) {
 }
 
 /**
- * Application sidebar — navy POS shell (homepage2). Fixed ~250px column with a
- * branded header, RBAC-gated navigation (gold active highlight), and a Logout
- * pinned to the bottom. Hidden below `lg` (a mobile drawer toggle comes later).
+ * Application sidebar — navy POS shell. Two states driven by the persisted UI
+ * store (SIDE PANEL E / Close designs):
+ *   • expanded  (~250px): brand + labelled nav, toggle top-right.
+ *   • collapsed (~72px):  icon-only rail with tooltips, toggle centered.
+ * The width animates between the two; Logout stays pinned to the bottom.
  */
 export function Sidebar({ className }: { className?: string }) {
+  const collapsed = useUiStore((s) => s.sidebarCollapsed);
+  const toggle = useUiStore((s) => s.toggleSidebar);
+
   return (
     <aside
       className={cn(
-        "flex h-full w-[250px] flex-col text-white",
+        "flex h-full flex-col text-white transition-[width] duration-200 ease-in-out",
+        collapsed ? "w-[72px]" : "w-[250px]",
         className,
       )}
       style={{ background: "var(--pos-navy)" }}
     >
-      {/* Brand header */}
-      <div className="flex h-16 items-center gap-2.5 px-6">
-        <Icons.TicketCheck className="size-6 text-[var(--pos-amber)]" />
-        <span className="text-[15px] font-semibold">Ticket Booking</span>
+      {/* Header: brand (expanded) + collapse toggle. */}
+      <div
+        className={cn(
+          "flex h-16 items-center border-b border-white/10",
+          collapsed ? "justify-center px-2" : "justify-between px-4",
+        )}
+      >
+        {!collapsed && (
+          <div className="flex items-center gap-2.5">
+            <Icons.TicketCheck className="size-6 text-[var(--pos-amber)]" />
+            <span className="text-[15px] font-semibold">Ticket Booking</span>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          className="flex size-9 items-center justify-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--pos-amber)] focus-visible:outline-none"
+        >
+          <Icons.ListCollapse className="size-5" />
+        </button>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation (single flat list per the design). */}
       <div className="flex-1 space-y-4 overflow-y-auto py-4">
-        <NavSection items={mainNav} />
-        <div className="mx-6 border-t border-white/10" />
-        <NavSection items={adminNav} />
+        <NavSection items={mainNav} collapsed={collapsed} />
+        {adminNav.length > 0 && (
+          <>
+            <div
+              className={cn(
+                "border-t border-white/10",
+                collapsed ? "mx-2" : "mx-4",
+              )}
+            />
+            <NavSection items={adminNav} collapsed={collapsed} />
+          </>
+        )}
       </div>
 
       {/* Logout pinned to the bottom */}
-      <div className="border-t border-white/10 p-3">
+      <div className={cn("border-t border-white/10", collapsed ? "p-2" : "p-3")}>
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: ROUTES.LOGIN })}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] font-medium text-white/75 transition-colors duration-150 hover:bg-white/10 hover:text-white"
+          title={collapsed ? "Logout" : undefined}
+          aria-label="Logout"
+          className={cn(
+            "flex w-full items-center rounded-lg text-[14px] font-medium text-white/75 transition-colors duration-150 hover:bg-white/10 hover:text-white",
+            collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
+          )}
         >
-          <Icons.LogOut className="size-[18px]" />
-          Logout
+          <Icons.LogOut className="size-[18px] shrink-0" />
+          {!collapsed && "Logout"}
         </button>
       </div>
     </aside>

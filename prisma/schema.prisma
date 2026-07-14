@@ -312,6 +312,11 @@ model TicketCategory {
   barcode        String?
   /// GST rate as a percentage (stored per row; billing applies 18% flat).
   gstRate        Int     @default(18) @map("gst_rate")
+  /// Scheduled next price (in paise). When set with `effectiveFrom`, this price
+  /// takes over from `pricePaise` on/after that date. Null = no scheduled change.
+  futurePricePaise Int?      @map("future_price_paise")
+  /// Date from which `futurePricePaise` applies (inclusive). Null = not scheduled.
+  effectiveFrom    DateTime? @map("effective_from") @db.Date
   sortOrder      Int     @default(0) @map("sort_order")
   isActive       Boolean @default(true) @map("is_active")
 
@@ -356,6 +361,8 @@ model Customer {
   name      String
   mobile    String  @unique
   email     String?
+  /// GST identification number, shown in the Selected Customer Details block.
+  gstn      String?
   /// Free-text address / notes for the customer record.
   notes     String?
   isActive  Boolean @default(true) @map("is_active")
@@ -423,6 +430,21 @@ model Booking {
   /// True for complimentary passes — payment is waived; pass details captured.
   isComplimentary Boolean @map("is_complimentary") @default(false)
   passReference   String? @map("pass_reference")
+
+  // --- Complimentary pass details (all null for a standard booking) ---
+  passNo             String? @map("pass_no")
+  passDate           String? @map("pass_date") // "YYYY-MM-DD"
+  discountPercent    Int?    @map("discount_percent")
+  guestName          String? @map("guest_name")
+  guestMobile        String? @map("guest_mobile")
+  guestDepartment    String? @map("guest_department")
+  guestDesignation   String? @map("guest_designation")
+  compAdultCount     Int?    @map("comp_adult_count")
+  compChildCount     Int?    @map("comp_child_count")
+  referenceName      String? @map("reference_name")
+  referenceMobile    String? @map("reference_mobile")
+  referenceDepartment  String? @map("reference_department")
+  referenceDesignation String? @map("reference_designation")
 
   subtotalPaise Int @map("subtotal_paise")
   taxPaise      Int @default(0) @map("tax_paise")

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-phone-number-input/style.css";
 
 /*
  * Design tokens for the admin theme (Shadcn-compatible).
@@ -207,4 +208,54 @@
   .booking-panel-enter {
     animation: none;
   }
+}
+
+/*
+ * react-phone-number-input — restyled to match the app's <Input>: same height,
+ * border, radius, focus ring, and disabled/invalid states. The country <select>
+ * (flag + dropdown) sits inside the same bordered box as the number field.
+ */
+.phone-field {
+  --PhoneInputCountryFlag-height: 1em;
+  --PhoneInputCountrySelectArrow-color: var(--muted-foreground);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.25rem; /* h-9 */
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--input);
+  background: transparent;
+  padding: 0 0.75rem;
+  box-shadow: var(--shadow-xs, 0 1px 2px 0 rgb(0 0 0 / 0.05));
+  transition: color 150ms, box-shadow 150ms, border-color 150ms;
+}
+.phone-field:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+.phone-field .PhoneInputInput {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 0.875rem; /* text-sm */
+  color: inherit;
+  min-width: 0;
+  flex: 1;
+}
+.phone-field .PhoneInputInput::placeholder {
+  color: var(--muted-foreground);
+}
+.phone-field .PhoneInputCountrySelect {
+  color: inherit;
+}
+.phone-field.phone-field-invalid {
+  border-color: var(--destructive);
+}
+.phone-field.phone-field-invalid:focus-within {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 30%, transparent);
+}
+.phone-field.phone-field-disabled {
+  pointer-events: none;
+  opacity: 0.5;
 }

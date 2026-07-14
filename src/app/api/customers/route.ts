@@ -61,6 +61,7 @@ export async function POST(request: Request) {
         name: input.name,
         mobile: input.mobile,
         email: input.email || null,
+        gstn: input.gstn || null,
         notes: input.notes || null,
       },
     });

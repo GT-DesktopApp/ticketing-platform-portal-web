@@ -16,9 +16,15 @@ const MAX_BYTES = 3 * 1024 * 1024; // 3 MB
 export function ImageUpload({
   value,
   onChange,
+  label = "Upload Category Image",
+  hint = "Drag & drop image here, or",
 }: {
   value: string | null;
   onChange: (dataUrl: string | null) => void;
+  /** Prompt shown in the empty drop zone (e.g. "Upload Attraction Image"). */
+  label?: string;
+  /** Secondary line under the label. */
+  hint?: string;
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -112,10 +118,10 @@ export function ImageUpload({
           )}
         </span>
         <span className="text-[14px] font-semibold text-[var(--pos-navy)]">
-          Upload Category Image
+          {label}
         </span>
         <span className="text-[12px] text-[var(--login-text-muted)]">
-          Drag &amp; drop image here, or{" "}
+          {hint}{" "}
           <span className="font-medium text-[var(--pos-amber-600)]">
             browse files
           </span>

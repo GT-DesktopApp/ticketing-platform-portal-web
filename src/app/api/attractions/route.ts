@@ -4,25 +4,27 @@ import { requirePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { createTicketProductSchema } from "@/modules/pos/schemas/booking.schema";
 
-/** The single system attraction every catalog product belongs to. */
+/** The seed attraction still used as a fallback for the "New Category" POST. */
 const CATALOG_NAME = "Catalog";
 
 /**
- * Find the catalog attraction, optionally with its active products filtered by a
- * name search. The booking screen is a flat product grid, so the products live
- * under this one attraction.
+ * Load all bookable (active) attractions with their active ticket categories,
+ * optionally filtered by attraction name. Attractions are managed under the
+ * Attraction Management module, so the booking screen and that module share the
+ * same source of truth — an attraction deleted there disappears here too.
  */
-async function findCatalog(search?: string) {
-  return prisma.attraction.findFirst({
-    where: { name: CATALOG_NAME, isActive: true },
+async function findBookableAttractions(search?: string) {
+  return prisma.attraction.findMany({
+    where: {
+      isActive: true,
+      ...(search
+        ? { name: { contains: search, mode: "insensitive" } }
+        : {}),
+    },
+    orderBy: { createdAt: "asc" },
     include: {
       categories: {
-        where: {
-          isActive: true,
-          ...(search
-            ? { name: { contains: search, mode: "insensitive" } }
-            : {}),
-        },
+        where: { isActive: true },
         orderBy: { sortOrder: "asc" },
         include: { categoryType: { select: { id: true, name: true } } },
       },
@@ -30,23 +32,22 @@ async function findCatalog(search?: string) {
   });
 }
 
-/** Shape the catalog row for the client (`categories` → `ticketProducts`). */
-function toClient(
-  catalog: NonNullable<Awaited<ReturnType<typeof findCatalog>>>,
-) {
-  const { categories, ...attraction } = catalog;
-  return { ...attraction, ticketProducts: categories };
+type BookableAttraction = Awaited<
+  ReturnType<typeof findBookableAttractions>
+>[number];
+
+/** Shape an attraction for the client (`categories` → `ticketProducts`). */
+function toClient(attraction: BookableAttraction) {
+  const { categories, ...rest } = attraction;
+  return { ...rest, ticketProducts: categories };
 }
 
 /**
  * GET /api/attractions
  *
- * Returns the flat product catalog: a single attraction whose `ticketProducts`
- * are the cards shown in the booking grid (name / category type / sales price /
- * barcode / image). A `?search=` query filters the products by name.
- *
- * The response is still a one-element attractions array so the existing
- * `useAttractions()` hook + cart store keep working unchanged.
+ * Returns every active attraction, each with its `ticketProducts` (the priced
+ * visitor/ticket categories). A `?search=` query filters by attraction name.
+ * The booking screen picks an attraction and opens its category drawer.
  */
 export async function GET(request: Request) {
   try {
@@ -55,10 +56,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search")?.trim();
 
-    const catalog = await findCatalog(search);
-    const attractions = catalog ? [toClient(catalog)] : [];
+    const attractions = await findBookableAttractions(search);
 
-    return ok(attractions, "Attractions loaded.");
+    return ok(attractions.map(toClient), "Attractions loaded.");
   } catch (error) {
     return handleApiError(error);
   }

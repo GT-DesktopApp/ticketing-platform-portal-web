@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  GSTIN_REGEX,
+  isValidPhone,
+  normalizeName,
+} from "@/modules/pos/utils/validation";
+
 /**
  * Validation schemas for the POS booking flow. These are the single source of
  * truth for request shapes — the API route handlers parse with them, and the
@@ -27,21 +33,59 @@ export type CreateTicketProductInput = z.infer<
 
 /** Create-customer payload (Add New Customer in the Customer step). */
 export const createCustomerSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
+  // Collapse whitespace and require at least one real character — a name that is
+  // only spaces (or starts with spaces) normalises to "" and fails min(1).
+  name: z
+    .string()
+    .transform(normalizeName)
+    .pipe(z.string().min(1, "Name is required")),
+  // The PhoneInput stores E.164 (e.g. "+919812345678"); validate it as a real
+  // phone number rather than a loose length check.
   mobile: z
     .string()
     .trim()
-    .min(7, "Enter a valid mobile number")
-    .max(20, "Mobile number is too long"),
+    .refine(isValidPhone, "Enter a valid mobile number"),
   email: z
     .string()
     .trim()
     .email("Enter a valid email")
     .optional()
     .or(z.literal("")),
+  // Optional, but when present must be a valid 15-char GSTIN.
+  gstn: z
+    .string()
+    .trim()
+    .transform((v) => v.toUpperCase())
+    .refine((v) => v === "" || GSTIN_REGEX.test(v), "Enter a valid GST number")
+    .optional()
+    .or(z.literal("")),
   notes: z.string().trim().optional(),
 });
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
+
+/**
+ * Complimentary-pass details captured when "Issue Complimentary Ticket?" is on
+ * (Pass details / Guest details / Visitor count / Reference). All optional at
+ * the field level; the booking schema requires the essentials for comp bookings.
+ */
+export const complimentaryDetailsSchema = z.object({
+  passNo: z.string().trim().optional(),
+  passDate: z.string().trim().optional(),
+  discountPercent: z.number().int().min(0).max(100).optional().nullable(),
+  guestName: z.string().trim().optional(),
+  guestMobile: z.string().trim().optional(),
+  guestDepartment: z.string().trim().optional(),
+  guestDesignation: z.string().trim().optional(),
+  adultCount: z.number().int().min(0).optional().nullable(),
+  childCount: z.number().int().min(0).optional().nullable(),
+  referenceName: z.string().trim().optional(),
+  referenceMobile: z.string().trim().optional(),
+  referenceDepartment: z.string().trim().optional(),
+  referenceDesignation: z.string().trim().optional(),
+});
+export type ComplimentaryDetailsInput = z.infer<
+  typeof complimentaryDetailsSchema
+>;
 
 /** One cart line: a ticket category and how many were chosen. */
 export const bookingItemSchema = z.object({
@@ -72,6 +116,7 @@ export const createBookingSchema = z
     customerId: z.string().uuid().optional().nullable(),
     isComplimentary: z.boolean().default(false),
     passReference: z.string().trim().optional(),
+    complimentary: complimentaryDetailsSchema.optional(),
     items: z.array(bookingItemSchema).min(1, "Add at least one ticket"),
     seatAssignments: z.array(seatAssignmentSchema).default([]),
     payment: paymentSchema.optional(),

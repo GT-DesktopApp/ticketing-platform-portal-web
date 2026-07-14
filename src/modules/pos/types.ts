@@ -70,6 +70,7 @@ export interface Customer {
   name: string;
   mobile: string;
   email: string | null;
+  gstn: string | null;
   notes: string | null;
 }
 

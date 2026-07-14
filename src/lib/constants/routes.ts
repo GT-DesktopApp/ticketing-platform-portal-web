@@ -17,9 +17,14 @@ export const ROUTES = {
   DASHBOARD: "/dashboard",
   POS: "/pos",
   BOOKINGS: "/bookings",
+  TRANSACTIONS: "/transactions",
+  INVOICES: "/invoices",
+  INVENTORY: "/inventory",
+  CCTV: "/cctv",
   ATTRACTIONS: "/attractions",
   TICKETS: "/tickets",
   CUSTOMERS: "/customers",
+  COMPLIMENTARY_PASSES: "/complimentary-passes",
   USERS: "/users",
   ROLES: "/roles",
   PERMISSIONS: "/permissions",
@@ -27,6 +32,7 @@ export const ROUTES = {
   QR_VERIFY: "/qr",
   AUDIT_LOGS: "/audit-logs",
   SETTINGS: "/settings",
+  BACKUP: "/backup",
 } as const;
 
 export type AppRoute = (typeof ROUTES)[keyof typeof ROUTES];
@@ -44,6 +50,11 @@ export const API_ROUTES = {
   ATTRACTIONS: "/api/attractions",
   CUSTOMERS: "/api/customers",
   BOOKINGS: "/api/bookings",
+  // Attraction Management (multi-attraction CRUD + bulk upload)
+  MANAGE_ATTRACTIONS: "/api/attractions/manage",
+  BULK_UPLOAD_VALIDATE: "/api/attractions/bulk-upload/validate",
+  BULK_UPLOAD_IMPORT: "/api/attractions/bulk-upload/import",
+  BULK_UPLOAD_TEMPLATE: "/api/attractions/bulk-upload/template",
 } as const;
 
 /**

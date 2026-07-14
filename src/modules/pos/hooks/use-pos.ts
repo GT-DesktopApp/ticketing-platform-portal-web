@@ -1,20 +1,23 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { apiClient } from "@/lib/api/client";
 import { API_ROUTES } from "@/lib/constants/routes";
 import type {
   CreateBookingInput,
   CreateCustomerInput,
-  CreateTicketProductInput,
 } from "@/modules/pos/schemas/booking.schema";
 import type {
   Attraction,
   BogieView,
   CategoryType,
   Customer,
-  TicketProduct,
 } from "@/modules/pos/types";
 
 /** Query keys, centralised so invalidation stays consistent. */
@@ -39,7 +42,19 @@ export function useCategoryTypes() {
   });
 }
 
-/** All active attractions + their priced categories (booking screen). */
+/**
+ * All active attractions + their priced categories (booking screen).
+ *
+ * Caching: the attraction catalog rarely changes during a booking session, so
+ * we fetch it ONCE and keep it fresh for a long window. This prevents the list
+ * from flashing "Loading…" repeatedly:
+ *   • staleTime 30m  — no background refetch on remount/navigation within the session.
+ *   • gcTime 1h      — the cached data survives even if the screen unmounts briefly.
+ *   • refetchOnMount / refetchOnReconnect false — never re-load on re-entry.
+ *   • placeholderData keepPreviousData — if a refetch does happen (e.g. after an
+ *     edit invalidates the key), the old list stays visible instead of blanking.
+ * Mutations that change attractions explicitly invalidate ["attractions"].
+ */
 export function useAttractions(search?: string) {
   return useQuery({
     queryKey: posKeys.attractions(search),
@@ -50,6 +65,11 @@ export function useAttractions(search?: string) {
       const { data } = await apiClient.get<Attraction[]>(url);
       return data;
     },
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -95,27 +115,6 @@ export function useCreateCustomer() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customers"] });
-    },
-  });
-}
-
-/**
- * Create a new catalog product (the "New Category" dialog). On success the
- * attractions query is invalidated so the new card appears in the grid
- * immediately.
- */
-export function useCreateTicketProduct() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: CreateTicketProductInput) => {
-      const { data } = await apiClient.post<TicketProduct>(
-        API_ROUTES.ATTRACTIONS,
-        input,
-      );
-      return data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["attractions"] });
     },
   });
 }
