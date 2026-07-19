@@ -1,16 +1,15 @@
 import { z } from "zod";
 
-import { emailSchema } from "@/lib/validations/common";
-
 /**
  * Login form / credentials schema.
  *
- * Lives in the `auth` feature module (feature-owned validation), composed from
- * the shared `emailSchema` primitive. The credentials provider and the login
- * form both import this so client and server validate identically.
+ * Lives in the `auth` feature module (feature-owned validation). The `email`
+ * field accepts an **email OR a username** (the login screen reads
+ * "Email/Username"); the credentials provider resolves it against either column.
+ * Kept lenient here so a valid username isn't rejected before the DB lookup.
  */
 export const loginSchema = z.object({
-  email: emailSchema,
+  email: z.string().trim().min(1, "Email or username is required."),
   password: z.string().min(1, "Password is required."),
 });
 

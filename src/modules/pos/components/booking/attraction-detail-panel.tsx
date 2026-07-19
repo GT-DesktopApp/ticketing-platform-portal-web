@@ -73,9 +73,19 @@ export const AttractionDetailPanel = memo(function AttractionDetailPanel({
       {/* Header */}
       <div className="rounded-[12px] bg-[var(--pos-blue-soft)]/60 p-4">
         <div className="flex items-start justify-between gap-3">
-          <h2 className="text-[18px] font-bold text-[var(--pos-navy)]">
-            {attraction.name}
-          </h2>
+          <div className="flex min-w-0 items-center gap-3">
+            {attraction.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={attraction.imageUrl}
+                alt={attraction.name}
+                className="size-12 shrink-0 rounded-[10px] object-cover"
+              />
+            )}
+            <h2 className="truncate text-[18px] font-bold text-[var(--pos-navy)]">
+              {attraction.name}
+            </h2>
+          </div>
           <button
             type="button"
             onClick={onClose}

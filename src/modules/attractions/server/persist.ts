@@ -28,6 +28,8 @@ export async function createAttraction(input: AttractionInput) {
       openTime: input.openTime ?? null,
       closeTime: input.closeTime ?? null,
       durationMin: input.durationMin ?? null,
+      requiresSeats: input.requiresSeats,
+      seatLayoutId: input.requiresSeats ? (input.seatLayoutId ?? null) : null,
       baseRatePaise: baseRatePaise(input.categories),
       categories: {
         create: input.categories.map((c, i) => ({
@@ -69,6 +71,8 @@ export async function updateAttraction(id: string, input: AttractionInput) {
         openTime: input.openTime ?? null,
         closeTime: input.closeTime ?? null,
         durationMin: input.durationMin ?? null,
+        requiresSeats: input.requiresSeats,
+        seatLayoutId: input.requiresSeats ? (input.seatLayoutId ?? null) : null,
         baseRatePaise: baseRatePaise(input.categories),
       },
     });

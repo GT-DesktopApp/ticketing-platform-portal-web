@@ -105,14 +105,14 @@ function LoginForm() {
               error={errors.password?.message}
               {...register("password")}
             />
-            <div className="flex justify-end">
+            {/* <div className="flex justify-end">
               <a
                 href="#"
                 className="text-[16px] text-[var(--login-text-muted)] underline-offset-4 transition-colors hover:text-[var(--login-navy)] hover:underline focus-visible:underline focus-visible:outline-none"
               >
                 Forgot Password?
               </a>
-            </div>
+            </div> */}
           </div>
 
           <LoginButton loading={isSubmitting}>

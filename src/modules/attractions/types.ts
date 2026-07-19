@@ -31,6 +31,10 @@ export interface ManagedAttraction {
   openTime: string | null;
   closeTime: string | null;
   durationMin: number | null;
+  /** Whether the attraction needs seat allocation (shows the Seating action). */
+  requiresSeats: boolean;
+  /** The attached reusable seat layout, or null. */
+  seatLayoutId: string | null;
   categories: AttractionCategory[];
 }
 

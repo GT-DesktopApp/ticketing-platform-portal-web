@@ -59,5 +59,7 @@ export const apiClient = {
     request<T>(url, { method: "POST", body: JSON.stringify(payload ?? {}) }),
   put: <T>(url: string, payload?: unknown) =>
     request<T>(url, { method: "PUT", body: JSON.stringify(payload ?? {}) }),
+  patch: <T>(url: string, payload?: unknown) =>
+    request<T>(url, { method: "PATCH", body: JSON.stringify(payload ?? {}) }),
   del: <T>(url: string) => request<T>(url, { method: "DELETE" }),
 };

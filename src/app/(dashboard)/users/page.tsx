@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 
-import { PlaceholderPage } from "@/components/shared/placeholder-page";
+import { UserManagement } from "@/modules/users/components/user-management";
 
 export const metadata: Metadata = { title: "User Management" };
 
+/**
+ * User Management route (Users + Roles tabs). The interactive screen is a client
+ * component; this server page is just the route entry.
+ */
 export default function Page() {
-  return (
-    <PlaceholderPage
-      title="User Management"
-      icon="UserCog"
-      description="Manage staff accounts and access."
-    />
-  );
+  return <UserManagement />;
 }

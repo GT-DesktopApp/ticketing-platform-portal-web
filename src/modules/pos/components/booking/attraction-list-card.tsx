@@ -47,8 +47,21 @@ export const AttractionListCard = memo(function AttractionListCard({
           : "border-[var(--login-border)]"
       }`}
     >
-      <div className="flex size-14 shrink-0 items-center justify-center rounded-[10px] bg-[var(--pos-blue-soft)]">
-        <Icon className="size-7 text-[var(--pos-navy)]" strokeWidth={1.5} aria-hidden />
+      <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[var(--pos-blue-soft)]">
+        {attraction.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={attraction.imageUrl}
+            alt={attraction.name}
+            className="size-full object-cover"
+          />
+        ) : (
+          <Icon
+            className="size-7 text-[var(--pos-navy)]"
+            strokeWidth={1.5}
+            aria-hidden
+          />
+        )}
       </div>
 
       <div className="min-w-0 flex-1">

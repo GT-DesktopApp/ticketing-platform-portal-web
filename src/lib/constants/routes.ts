@@ -22,6 +22,7 @@ export const ROUTES = {
   INVENTORY: "/inventory",
   CCTV: "/cctv",
   ATTRACTIONS: "/attractions",
+  LAYOUTS: "/layouts",
   TICKETS: "/tickets",
   CUSTOMERS: "/customers",
   COMPLIMENTARY_PASSES: "/complimentary-passes",
@@ -42,6 +43,7 @@ export const API_ROUTES = {
   AUTH: "/api/auth",
   USERS: "/api/users",
   ROLES: "/api/roles",
+  ROLE_OPTIONS: "/api/roles/options",
   PERMISSIONS: "/api/permissions",
   TICKETS: "/api/tickets",
   REPORTS: "/api/reports",
@@ -55,6 +57,9 @@ export const API_ROUTES = {
   BULK_UPLOAD_VALIDATE: "/api/attractions/bulk-upload/validate",
   BULK_UPLOAD_IMPORT: "/api/attractions/bulk-upload/import",
   BULK_UPLOAD_TEMPLATE: "/api/attractions/bulk-upload/template",
+  // Layout Management (reusable seat layouts)
+  LAYOUTS: "/api/layouts",
+  LAYOUT_OPTIONS: "/api/layouts/options",
 } as const;
 
 /**

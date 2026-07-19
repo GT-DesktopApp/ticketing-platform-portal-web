@@ -81,8 +81,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email: parsed.data.email },
+        // The identifier is an email OR a username; try both columns.
+        const identifier = parsed.data.email.trim();
+        const user = await prisma.user.findFirst({
+          where: {
+            OR: [
+              { email: identifier.toLowerCase() },
+              { email: identifier },
+              { username: identifier },
+            ],
+          },
         });
         if (!user || !user.isActive || !user.passwordHash) return null;
 

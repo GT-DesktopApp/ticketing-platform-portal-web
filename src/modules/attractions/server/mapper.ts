@@ -44,6 +44,8 @@ export function toManagedAttraction(
     openTime: a.openTime,
     closeTime: a.closeTime,
     durationMin: a.durationMin,
+    requiresSeats: a.requiresSeats,
+    seatLayoutId: a.seatLayoutId,
     categories,
   };
 }

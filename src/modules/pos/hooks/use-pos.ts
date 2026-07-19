@@ -45,15 +45,18 @@ export function useCategoryTypes() {
 /**
  * All active attractions + their priced categories (booking screen).
  *
- * Caching: the attraction catalog rarely changes during a booking session, so
- * we fetch it ONCE and keep it fresh for a long window. This prevents the list
- * from flashing "Loading…" repeatedly:
- *   • staleTime 30m  — no background refetch on remount/navigation within the session.
- *   • gcTime 1h      — the cached data survives even if the screen unmounts briefly.
- *   • refetchOnMount / refetchOnReconnect false — never re-load on re-entry.
- *   • placeholderData keepPreviousData — if a refetch does happen (e.g. after an
- *     edit invalidates the key), the old list stays visible instead of blanking.
- * Mutations that change attractions explicitly invalidate ["attractions"].
+ * Caching strategy — load once, but ALWAYS reflect Attraction-Management edits:
+ *   • staleTime 5m — within a normal session the list is served from cache and
+ *     the "Loading…" state doesn't reflash on navigation.
+ *   • refetchOnMount defaults to `true` — a query only refetches on mount when
+ *     it is STALE. Attraction-Management mutations call
+ *     `invalidateQueries(["attractions"])`, which marks this query stale, so
+ *     returning to the booking screen after an add/edit/delete triggers exactly
+ *     one refetch and the panel shows the latest image/price/availability.
+ *   • placeholderData keepPreviousData — during that refetch the old list stays
+ *     visible instead of blanking.
+ * The key is `["attractions", ""]`, and management invalidates `["attractions"]`
+ * (a prefix match), so a deleted attraction disappears here too on next mount.
  */
 export function useAttractions(search?: string) {
   return useQuery({
@@ -65,9 +68,8 @@ export function useAttractions(search?: string) {
       const { data } = await apiClient.get<Attraction[]>(url);
       return data;
     },
-    staleTime: 30 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
-    refetchOnMount: false,
     refetchOnReconnect: false,
     placeholderData: keepPreviousData,
   });

@@ -13,10 +13,13 @@ import {
   useManagedAttractions,
 } from "@/modules/attractions/hooks/use-attractions-admin";
 import type { ManagedAttraction } from "@/modules/attractions/types";
+import { LayoutForm } from "@/modules/layouts/components/layout-form";
+import { useLayout } from "@/modules/layouts/hooks/use-layouts";
 
 type View =
   | { kind: "list" }
   | { kind: "form"; attraction: ManagedAttraction | null }
+  | { kind: "seating"; attraction: ManagedAttraction }
   | { kind: "bulk" };
 
 /**
@@ -76,6 +79,27 @@ export function AttractionManagement() {
             showToast(
               view.attraction ? "Attraction updated." : "Attraction created.",
             );
+            setView({ kind: "list" });
+          }}
+        />
+        {toast && <Toast message={toast} />}
+      </div>
+    );
+  }
+
+  // ── Seating (edit layout) view ────────────────────────────────────────────
+  if (view.kind === "seating") {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackHeader
+          title={`Edit Layout — ${view.attraction.name}`}
+          onBack={() => setView({ kind: "list" })}
+        />
+        <SeatingEditor
+          attraction={view.attraction}
+          onCancel={() => setView({ kind: "list" })}
+          onSaved={(m) => {
+            showToast(m);
             setView({ kind: "list" });
           }}
         />
@@ -166,6 +190,7 @@ export function AttractionManagement() {
                 key={a.id}
                 attraction={a}
                 onEdit={() => setView({ kind: "form", attraction: a })}
+                onSeating={() => setView({ kind: "seating", attraction: a })}
                 onDelete={() => setPendingDelete(a)}
               />
             ))}
@@ -210,5 +235,34 @@ function Toast({ message }: { message: string }) {
     <div className="fixed right-6 bottom-6 z-50 rounded-lg bg-[var(--pos-navy)] px-4 py-3 text-[13px] font-medium text-white shadow-lg">
       {message}
     </div>
+  );
+}
+
+/**
+ * Loads the attraction's linked seat layout and renders the layout editor. The
+ * "Seating" button jumps straight here to edit an existing seated attraction's
+ * layout.
+ */
+function SeatingEditor({
+  attraction,
+  onCancel,
+  onSaved,
+}: {
+  attraction: ManagedAttraction;
+  onCancel: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const { data: layout, isLoading } = useLayout(attraction.seatLayoutId);
+
+  if (isLoading) {
+    return (
+      <p className="rounded-[16px] border border-[var(--login-border)] bg-white p-10 text-center text-sm text-[var(--login-text-muted)] shadow-sm">
+        Loading seat layout…
+      </p>
+    );
+  }
+
+  return (
+    <LayoutForm layout={layout ?? null} onCancel={onCancel} onSaved={onSaved} />
   );
 }

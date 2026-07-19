@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, IndianRupee, Pencil, Timer, Trash2 } from "lucide-react";
+import { Armchair, Clock, IndianRupee, Pencil, Timer, Trash2 } from "lucide-react";
 import { memo } from "react";
 
 import type { ManagedAttraction } from "@/modules/attractions/types";
@@ -19,10 +19,13 @@ function money(v: number): string {
 export const AttractionCard = memo(function AttractionCard({
   attraction,
   onEdit,
+  onSeating,
   onDelete,
 }: {
   attraction: ManagedAttraction;
   onEdit: () => void;
+  /** Opens the seat layout editor. Only shown when the attraction is seated. */
+  onSeating: () => void;
   onDelete: () => void;
 }) {
   const { name, type, imageUrl, openTime, closeTime, durationMin, categories } =
@@ -91,6 +94,15 @@ export const AttractionCard = memo(function AttractionCard({
           >
             <Pencil className="size-3.5" /> Edit
           </button>
+          {attraction.requiresSeats && (
+            <button
+              type="button"
+              onClick={onSeating}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-[var(--pos-success)]/40 py-2 text-[13px] font-medium text-[var(--pos-success)] transition-colors hover:bg-[var(--pos-success)]/10"
+            >
+              <Armchair className="size-3.5" /> Seating
+            </button>
+          )}
           <button
             type="button"
             onClick={onDelete}

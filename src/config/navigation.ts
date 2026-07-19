@@ -57,6 +57,12 @@ export const mainNav: NavItem[] = [
     permissions: [PERMISSIONS.ATTRACTIONS_VIEW],
   },
   {
+    title: "Layout Management",
+    href: ROUTES.LAYOUTS,
+    icon: "LayoutGrid",
+    permissions: [PERMISSIONS.ATTRACTIONS_VIEW],
+  },
+  {
     title: "Customer Management",
     href: ROUTES.CUSTOMERS,
     icon: "Users",

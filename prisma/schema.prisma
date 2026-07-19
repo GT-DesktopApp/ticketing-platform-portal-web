@@ -29,7 +29,11 @@ datasource db {
 model User {
   id           String    @id @default(uuid()) @db.Uuid
   email        String    @unique
+  /// Optional login alias. Unique when present; login accepts email OR username.
+  username     String?   @unique
   name         String?
+  /// Contact mobile number (E.164 or local). Not used for login.
+  mobile       String?
   passwordHash String?   @map("password_hash")
   image        String?
   isActive     Boolean   @default(true) @map("is_active")
@@ -63,6 +67,8 @@ model Role {
   name        String // display name, e.g. "Super Admin"
   description String?
   isSystem    Boolean @default(false) @map("is_system")
+  /// Inactive roles can't be assigned to new users and are flagged in the UI.
+  isActive    Boolean @default(true) @map("is_active")
 
   rolePermissions RolePermission[]
   userRoles       UserRole[]
@@ -270,6 +276,10 @@ model Attraction {
   seatsPerTrip  Int?    @map("seats_per_trip")
   requiresSeats Boolean @default(false) @map("requires_seats")
 
+  /// The reusable seat layout attached to this attraction (when requiresSeats).
+  seatLayoutId String?     @map("seat_layout_id") @db.Uuid
+  seatLayout   SeatLayout? @relation(fields: [seatLayoutId], references: [id], onDelete: SetNull)
+
   openTime  String? @map("open_time") // "10:00 AM"
   closeTime String? @map("close_time") // "6:00 PM"
   isActive  Boolean @default(true) @map("is_active")
@@ -418,6 +428,37 @@ model Seat {
   @@map("seats")
 }
 
+/// A reusable SEAT LAYOUT template (Layout Management + the attraction Seat
+/// Allocation step). It captures the grid geometry — rows, left/right column
+/// counts, aisle position/width — plus VIP rows and a display `totalSeats`. One
+/// layout can be shared across many attractions (Attraction.seatLayoutId).
+/// Presets (e.g. "3 × 36") seed `isCustom = false`; user grids from the Custom
+/// Layout modal are stored with `isCustom = true` and appear in the dropdown.
+model SeatLayout {
+  id            String        @id @default(uuid()) @db.Uuid
+  name          String // "Coach A", "3 × 36", …
+  /// Total seats shown/allocated for this layout.
+  totalSeats    Int           @map("total_seats")
+  rows          Int
+  columnsLeft   Int           @map("columns_left")
+  columnsRight  Int           @map("columns_right")
+  aislePosition AislePosition @default(CENTRE) @map("aisle_position")
+  aisleWidth    AisleWidth    @default(MEDIUM) @map("aisle_width")
+  /// 1-indexed row numbers marked VIP (JSON array of ints), e.g. [1, 2].
+  vipRows       Json?         @map("vip_rows")
+  /// True for user-created grids (Custom Layout); false for built-in presets.
+  isCustom      Boolean       @default(true) @map("is_custom")
+  isActive      Boolean       @default(true) @map("is_active")
+
+  attractions Attraction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@map("seat_layouts")
+}
+
 /// A completed (or in-progress) booking — the unit a payment settles.
 /// Amounts are in paise. `bookingNo` is a human-friendly receipt number.
 model Booking {
@@ -534,6 +575,26 @@ enum BogieStatus {
   FULL
 
   @@map("bogie_status")
+}
+
+/// Where the aisle sits in a seat layout (Custom Layout modal).
+enum AislePosition {
+  LEFT
+  CENTRE
+  RIGHT
+  DUAL
+  NONE
+
+  @@map("aisle_position")
+}
+
+/// The relative width of the aisle gap in a seat layout.
+enum AisleWidth {
+  NARROW
+  MEDIUM
+  WIDE
+
+  @@map("aisle_width")
 }
 
 enum SeatStatus {

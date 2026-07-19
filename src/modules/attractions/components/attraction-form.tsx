@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { ArrowLeft, Check, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { CategoryPricingCard } from "@/modules/attractions/components/category-pricing-card";
@@ -13,6 +13,18 @@ import {
   attractionInputSchema,
 } from "@/modules/attractions/schemas";
 import type { ManagedAttraction } from "@/modules/attractions/types";
+import {
+  draftToInput,
+  initialDraft,
+  type LayoutDraft,
+  LayoutEditor,
+} from "@/modules/layouts/components/layout-editor";
+import {
+  useCreateLayout,
+  useLayout,
+  useUpdateLayout,
+} from "@/modules/layouts/hooks/use-layouts";
+import { layoutInputSchema } from "@/modules/layouts/schemas";
 import { ImageUpload } from "@/modules/pos/components/booking/image-upload";
 
 /** Form-local draft of a category (all fields are strings while editing). */
@@ -85,7 +97,13 @@ export function AttractionForm({
   const isEdit = !!attraction;
   const createMut = useCreateAttraction();
   const updateMut = useUpdateAttraction();
-  const saving = createMut.isPending || updateMut.isPending;
+  const createLayout = useCreateLayout();
+  const updateLayout = useUpdateLayout();
+  const saving =
+    createMut.isPending ||
+    updateMut.isPending ||
+    createLayout.isPending ||
+    updateLayout.isPending;
 
   const [name, setName] = useState(attraction?.name ?? "");
   const [description, setDescription] = useState(attraction?.description ?? "");
@@ -98,6 +116,27 @@ export function AttractionForm({
       ? attraction.categories.map(toDraft)
       : DEFAULT_CATEGORY_NAMES.map((n) => emptyDraft(n)),
   );
+
+  // Seat allocation: the checkbox drives the two-step flow. When on, the footer
+  // button becomes "Next" → the Seat Layout step; a layout is created/linked on
+  // save. When off, "Save" persists the attraction with no layout.
+  const [requiresSeats, setRequiresSeats] = useState(
+    attraction?.requiresSeats ?? false,
+  );
+  const [step, setStep] = useState<"basic" | "seat">("basic");
+  const [layoutErrors, setLayoutErrors] = useState<{ name?: string }>({});
+
+  // When editing a seated attraction, load its linked layout so the Seat Layout
+  // step opens pre-filled. The user's edits (`touchedDraft`) take precedence
+  // once they change anything; until then we mirror the loaded layout.
+  const existingLayout = useLayout(
+    isEdit && attraction?.requiresSeats ? attraction.seatLayoutId : null,
+  );
+  const [touchedDraft, setTouchedDraft] = useState<LayoutDraft | null>(null);
+  const layoutDraft =
+    touchedDraft ??
+    (existingLayout.data ? initialDraft(existingLayout.data) : initialDraft(null));
+  const setLayoutDraft = setTouchedDraft;
 
   const [errors, setErrors] = useState<{
     name?: string;
@@ -123,7 +162,7 @@ export function AttractionForm({
   }
 
   /** Build the API input from the draft, or null if client validation fails. */
-  const buildInput = (): AttractionInput | null => {
+  const buildInput = (seatLayoutId?: string | null): AttractionInput | null => {
     const rows: Record<string, CategoryErrors> = {};
     const next: {
       name?: string;
@@ -176,23 +215,64 @@ export function AttractionForm({
       type: attraction?.type ?? "Ride",
       imageUrl: imageUrl as string,
       isActive,
+      requiresSeats,
+      seatLayoutId: requiresSeats ? (seatLayoutId ?? null) : null,
       categories: apiCategories,
     };
     const parsed = attractionInputSchema.safeParse(candidate);
     return parsed.success ? parsed.data : null;
   };
 
-  async function handleSave() {
+  /** Basic-info-only validity check (used to gate the "Next" button). */
+  function validateBasic(): boolean {
+    // buildInput sets `errors`; a seated attraction is allowed to have no
+    // layout yet at this stage, so we pass a placeholder id to skip that check.
+    return buildInput("00000000-0000-0000-0000-000000000000") !== null;
+  }
+
+  /** Persist the attraction (and, when seated, its layout first). */
+  async function persist(seatLayoutId: string | null) {
+    const input = buildInput(seatLayoutId);
+    if (!input) return false;
+    if (isEdit && attraction) {
+      await updateMut.mutateAsync({ id: attraction.id, input });
+    } else {
+      await createMut.mutateAsync(input);
+    }
+    return true;
+  }
+
+  /** Footer action. Off → save now. On (basic step) → go to seat step. On
+   * (seat step) → create/link the layout, then save the attraction. */
+  async function handlePrimary() {
     setServerError(null);
-    const input = buildInput();
-    if (!input) return;
+
+    if (!requiresSeats) {
+      if (await persist(null)) onSaved();
+      return;
+    }
+
+    if (step === "basic") {
+      if (validateBasic()) setStep("seat");
+      return;
+    }
+
+    // Seat step: validate + save the layout, then the attraction.
+    setLayoutErrors({});
+    const parsed = layoutInputSchema.safeParse(draftToInput(layoutDraft));
+    if (!parsed.success) {
+      const nameIssue = parsed.error.issues.find((i) => i.path[0] === "name");
+      setLayoutErrors({ name: nameIssue?.message ?? "Check the layout details." });
+      return;
+    }
     try {
-      if (isEdit && attraction) {
-        await updateMut.mutateAsync({ id: attraction.id, input });
-      } else {
-        await createMut.mutateAsync(input);
-      }
-      onSaved();
+      // Reuse the already-linked layout on edit; otherwise create a fresh one.
+      const existingId =
+        isEdit && attraction?.seatLayoutId ? attraction.seatLayoutId : null;
+      const saved = existingId
+        ? await updateLayout.mutateAsync({ id: existingId, input: parsed.data })
+        : await createLayout.mutateAsync(parsed.data);
+      if (await persist(saved.id)) onSaved();
     } catch (err) {
       setServerError(
         err instanceof Error ? err.message : "Failed to save attraction.",
@@ -206,8 +286,31 @@ export function AttractionForm({
     [],
   );
 
+  const onSeatStep = requiresSeats && step === "seat";
+
   return (
     <div className="flex flex-col gap-5 pb-24">
+      {/* Step indicator when a seat layout is involved. */}
+      {requiresSeats && (
+        <div className="flex items-center gap-2 text-[13px] font-medium">
+          <StepPill active={step === "basic"} label="1. Basic Information" />
+          <span className="text-[var(--login-text-muted)]">→</span>
+          <StepPill active={step === "seat"} label="2. Seat Layout" />
+        </div>
+      )}
+
+      {/* ── Seat Layout step ──────────────────────────────────────────────── */}
+      {onSeatStep && (
+        <LayoutEditor
+          draft={layoutDraft}
+          errors={layoutErrors}
+          onChange={setLayoutDraft}
+        />
+      )}
+
+      {/* ── Basic Information step ────────────────────────────────────────── */}
+      {!onSeatStep && (
+        <>
       {/* Top row: Basic Information + Status */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
         {/* Basic Information */}
@@ -318,6 +421,29 @@ export function AttractionForm({
               Inactive
             </button>
           </div>
+
+          {/* Seat Allocation — checking this reveals the Seat Layout step. */}
+          <h2 className="mt-6 text-[17px] font-bold text-[var(--pos-navy)]">
+            Seat Allocation
+          </h2>
+          <label className="mt-3 flex cursor-pointer items-center justify-between gap-3">
+            <span className="text-[13px] font-medium text-[var(--pos-navy)]">
+              Requires seat allocation
+            </span>
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={requiresSeats}
+              onClick={() => setRequiresSeats((v) => !v)}
+              className={`flex size-5 items-center justify-center rounded border transition-colors ${
+                requiresSeats
+                  ? "border-[var(--pos-navy)] bg-[var(--pos-navy)] text-white"
+                  : "border-[var(--login-border)] bg-white"
+              }`}
+            >
+              {requiresSeats && <Check className="size-3.5" strokeWidth={3} />}
+            </button>
+          </label>
         </section>
       </div>
 
@@ -354,6 +480,8 @@ export function AttractionForm({
           </button>
         </div>
       </section>
+        </>
+      )}
 
       {serverError && (
         <p className="rounded-md border border-[#DC2626]/30 bg-[#DC2626]/5 px-3 py-2 text-[13px] text-[#DC2626]">
@@ -363,22 +491,51 @@ export function AttractionForm({
 
       {/* Sticky footer actions */}
       <div className="sticky bottom-0 -mx-6 flex items-center justify-between border-t border-[var(--login-border)] bg-white/95 px-6 py-3 backdrop-blur">
+        {onSeatStep ? (
+          <button
+            type="button"
+            onClick={() => setStep("basic")}
+            className="flex items-center gap-2 rounded-md border border-[var(--login-border)] px-6 py-2.5 text-[14px] font-medium text-[var(--pos-navy)] transition-colors hover:bg-[var(--login-hover-bg)]"
+          >
+            <ArrowLeft className="size-4" /> Back
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-[var(--login-border)] px-6 py-2.5 text-[14px] font-medium text-[var(--pos-navy)] transition-colors hover:bg-[var(--login-hover-bg)]"
+          >
+            Cancel
+          </button>
+        )}
         <button
           type="button"
-          onClick={onCancel}
-          className="rounded-md border border-[var(--login-border)] px-6 py-2.5 text-[14px] font-medium text-[var(--pos-navy)] transition-colors hover:bg-[var(--login-hover-bg)]"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
+          onClick={handlePrimary}
           disabled={saving}
           className="rounded-md bg-[var(--pos-amber)] px-6 py-2.5 text-[14px] font-semibold text-[#1c1407] transition-colors hover:bg-[var(--pos-amber-600)] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {saving ? "Saving…" : "Save Attraction"}
+          {saving
+            ? "Saving…"
+            : requiresSeats && step === "basic"
+              ? "Next"
+              : "Save Attraction"}
         </button>
       </div>
     </div>
+  );
+}
+
+/** A small step-indicator pill for the two-step seated-attraction flow. */
+function StepPill({ active, label }: { active: boolean; label: string }) {
+  return (
+    <span
+      className={`rounded-full px-3 py-1 ${
+        active
+          ? "bg-[var(--pos-navy)] text-white"
+          : "bg-[var(--login-hover-bg)] text-[var(--login-text-muted)]"
+      }`}
+    >
+      {label}
+    </span>
   );
 }

@@ -58,13 +58,24 @@ export function useManagedAttraction(id: string | null) {
   });
 }
 
-/** Invalidate every management + booking query after a write. */
+/**
+ * Invalidate every management + booking query after a write.
+ *
+ * `refetchType: "all"` forces a refetch even for INACTIVE queries — the booking
+ * screen's `["attractions"]` query is usually unmounted while the operator is in
+ * Attraction Management, so a plain invalidate would only mark it stale and
+ * leave the old image/price/deleted card showing until a manual reload. Refetch
+ * of the deleted attraction thus propagates immediately to the booking screen.
+ */
 function useInvalidateAttractions() {
   const qc = useQueryClient();
   return () => {
-    qc.invalidateQueries({ queryKey: attractionAdminKeys.all });
-    // The booking screen reads a separate cache; refresh it too.
-    qc.invalidateQueries({ queryKey: ["attractions"] });
+    qc.invalidateQueries({
+      queryKey: attractionAdminKeys.all,
+      refetchType: "all",
+    });
+    // The booking screen reads a separate cache (["attractions"]); refresh it too.
+    qc.invalidateQueries({ queryKey: ["attractions"], refetchType: "all" });
   };
 }
 

@@ -51,9 +51,16 @@ export const attractionInputSchema = z.object({
   openTime: z.string().trim().optional().nullable(),
   closeTime: z.string().trim().optional().nullable(),
   durationMin: z.number().int().positive().optional().nullable(),
+  /** Whether this attraction needs seat allocation (drives the layout link). */
+  requiresSeats: z.boolean().default(false),
+  /** The reusable seat layout to attach (required when requiresSeats). */
+  seatLayoutId: z.string().uuid().optional().nullable(),
   categories: z
     .array(attractionCategorySchema)
     .min(1, "Add at least one visitor category"),
+}).refine((a) => !a.requiresSeats || !!a.seatLayoutId, {
+  message: "Select or create a seat layout for a seated attraction",
+  path: ["seatLayoutId"],
 });
 
 export type AttractionInput = z.infer<typeof attractionInputSchema>;
