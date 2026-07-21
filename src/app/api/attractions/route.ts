@@ -3,6 +3,10 @@ import { PERMISSIONS } from "@/lib/constants/permissions";
 import { requirePermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { createTicketProductSchema } from "@/modules/pos/schemas/booking.schema";
+import {
+  seatLayoutSelect,
+  toSeatLayoutConfig,
+} from "@/modules/pos/server/seat-layout";
 
 /** The seed attraction still used as a fallback for the "New Category" POST. */
 const CATALOG_NAME = "Catalog";
@@ -12,14 +16,15 @@ const CATALOG_NAME = "Catalog";
  * optionally filtered by attraction name. Attractions are managed under the
  * Attraction Management module, so the booking screen and that module share the
  * same source of truth — an attraction deleted there disappears here too.
+ *
+ * Seated attractions also load their `seatLayout` geometry so the booking flow
+ * can render the seat-allocation grid inline (there are no per-seat rows).
  */
 async function findBookableAttractions(search?: string) {
   return prisma.attraction.findMany({
     where: {
       isActive: true,
-      ...(search
-        ? { name: { contains: search, mode: "insensitive" } }
-        : {}),
+      ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
     },
     orderBy: { createdAt: "asc" },
     include: {
@@ -28,6 +33,7 @@ async function findBookableAttractions(search?: string) {
         orderBy: { sortOrder: "asc" },
         include: { categoryType: { select: { id: true, name: true } } },
       },
+      seatLayout: { select: seatLayoutSelect },
     },
   });
 }
@@ -38,8 +44,12 @@ type BookableAttraction = Awaited<
 
 /** Shape an attraction for the client (`categories` → `ticketProducts`). */
 function toClient(attraction: BookableAttraction) {
-  const { categories, ...rest } = attraction;
-  return { ...rest, ticketProducts: categories };
+  const { categories, seatLayout, ...rest } = attraction;
+  return {
+    ...rest,
+    ticketProducts: categories,
+    seatLayout: toSeatLayoutConfig(seatLayout),
+  };
 }
 
 /**

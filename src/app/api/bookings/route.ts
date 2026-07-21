@@ -9,6 +9,18 @@ import { createBookingSchema } from "@/modules/pos/schemas/booking.schema";
 /** GST rate applied to non-complimentary bookings (18%). */
 const GST_RATE = 0.18;
 
+/**
+ * Thrown inside the booking transaction when a requested seat is already taken,
+ * so the whole booking rolls back and we can return a clean 409 (rather than
+ * leaking the raw unique-constraint error).
+ */
+class SeatTakenError extends Error {
+  constructor(public readonly seatNumbers: number[]) {
+    super(`Seats already taken: ${seatNumbers.join(", ")}`);
+    this.name = "SeatTakenError";
+  }
+}
+
 /** Round a paise amount to the nearest rupee; return [rounded, roundOffDelta]. */
 function roundToRupee(paise: number): [number, number] {
   const rounded = Math.round(paise / 100) * 100;
@@ -114,8 +126,10 @@ export async function POST(request: Request) {
             compChildCount: input.complimentary?.childCount ?? null,
             referenceName: input.complimentary?.referenceName ?? null,
             referenceMobile: input.complimentary?.referenceMobile ?? null,
-            referenceDepartment: input.complimentary?.referenceDepartment ?? null,
-            referenceDesignation: input.complimentary?.referenceDesignation ?? null,
+            referenceDepartment:
+              input.complimentary?.referenceDepartment ?? null,
+            referenceDesignation:
+              input.complimentary?.referenceDesignation ?? null,
             subtotalPaise: subtotal,
             taxPaise: tax,
             roundOffPaise: roundOff,
@@ -126,18 +140,33 @@ export async function POST(request: Request) {
           select: { id: true },
         });
 
-        // Seat assignments + mark seats occupied (if any).
+        // Seat assignments (layout-derived seats). Occupancy is the set of seat
+        // numbers already assigned for this attraction; the DB unique constraint
+        // `[attractionId, seatNumber]` is the ultimate no-double-booking guard,
+        // but we also re-check here (inside the tx) to fail fast with a clear
+        // message before hitting the constraint.
         if (input.seatAssignments.length > 0) {
+          const requested = input.seatAssignments.map((s) => s.seatNumber);
+          const taken = await tx.seatAssignment.findMany({
+            where: {
+              attractionId: input.attractionId,
+              seatNumber: { in: requested },
+            },
+            select: { seatNumber: true },
+          });
+          if (taken.length > 0) {
+            // Abort the whole transaction — surfaced as a 409 below.
+            throw new SeatTakenError(taken.map((t) => t.seatNumber));
+          }
+
           await tx.seatAssignment.createMany({
             data: input.seatAssignments.map((s) => ({
               bookingId: booking.id,
-              seatId: s.seatId,
+              attractionId: input.attractionId,
+              seatNumber: s.seatNumber,
+              seatLabel: s.seatLabel,
               passengerRef: s.passengerRef,
             })),
-          });
-          await tx.seat.updateMany({
-            where: { id: { in: input.seatAssignments.map((s) => s.seatId) } },
-            data: { status: "OCCUPIED" },
           });
         }
 
@@ -177,10 +206,13 @@ export async function POST(request: Request) {
 
     return created(result, "Booking confirmed.");
   } catch (error) {
-    // A seat grabbed concurrently violates the unique seat constraint.
+    // A seat was already taken — either caught by our pre-check
+    // (SeatTakenError) or by the DB unique constraint on a concurrent race
+    // (P2002). Both surface as a 409 so the client can refresh + retry.
     if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
+      error instanceof SeatTakenError ||
+      (error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002")
     ) {
       return fail(
         "One or more selected seats were just taken. Please refresh seats and try again.",

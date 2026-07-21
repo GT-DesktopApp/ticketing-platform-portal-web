@@ -3,7 +3,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  ChevronDown,
   FileText,
   Phone,
   Plus,
@@ -11,7 +10,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { useDebounce } from "@/hooks/use-debounce";
 import { ROUTES } from "@/lib/constants/routes";
 import { BookingSummary } from "@/modules/pos/components/booking/booking-summary";
+import { SeatAllocation } from "@/modules/pos/components/booking/seat-allocation";
 import {
   useCreateCustomer,
   useCustomerSearch,
@@ -30,6 +30,7 @@ import {
   useCartStore,
 } from "@/modules/pos/store/cart-store";
 import type { Customer } from "@/modules/pos/types";
+import { passengerLabels } from "@/modules/pos/utils/passengers";
 import {
   isValidGstin,
   isValidPhone,
@@ -54,6 +55,8 @@ export function CustomerStep() {
   const setComplimentary = useCartStore((s) => s.setComplimentary);
   const comp = useCartStore((s) => s.complimentary);
   const setComp = useCartStore((s) => s.setComplimentaryDetails);
+  const tickets = useCartStore((s) => s.tickets);
+  const seats = useCartStore((s) => s.seats);
 
   const [search, setSearch] = useState("");
   const debounced = useDebounce(search, 350);
@@ -67,19 +70,28 @@ export function CustomerStep() {
 
   function handleContinue() {
     if (!canContinue) return;
-    const next = attraction?.requiresSeats
-      ? `${ROUTES.POS}/seats`
-      : `${ROUTES.POS}/payment`;
-    router.push(next);
+    // Seats are allocated inline here (not a separate step), so Continue always
+    // proceeds to Payment.
+    router.push(`${ROUTES.POS}/payment`);
   }
 
-  // Continue when: a customer is selected, OR complimentary with a guest name.
-  // Any mobile number that IS entered must also be valid.
-  const guestMobileOk =
-    !comp.guestMobile || isValidPhone(comp.guestMobile);
-  const canContinue = isComplimentary
+  // Customer gate: a selected customer, OR complimentary with a valid guest.
+  const guestMobileOk = !comp.guestMobile || isValidPhone(comp.guestMobile);
+  const customerOk = isComplimentary
     ? normalizeName(comp.guestName).length > 0 && guestMobileOk
     : customer !== null;
+
+  // Seat gate: for seated attractions, every passenger must have a seat.
+  const passengers = useMemo(
+    () => passengerLabels(attraction, tickets),
+    [attraction, tickets],
+  );
+  const seatsAssigned = passengers.filter((p) => seats[p]).length;
+  const seatsOk =
+    !attraction?.requiresSeats ||
+    (passengers.length > 0 && seatsAssigned === passengers.length);
+
+  const canContinue = customerOk && seatsOk;
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -155,7 +167,10 @@ export function CustomerStep() {
 
         {/* Selected Customer Details block */}
         <div className="mt-4 rounded-lg bg-muted/40 p-4">
-          <p className="mb-3 font-semibold" style={{ color: "var(--pos-navy)" }}>
+          <p
+            className="mb-3 font-semibold"
+            style={{ color: "var(--pos-navy)" }}
+          >
             Selected Customer Details
           </p>
           {customer ? (
@@ -178,8 +193,8 @@ export function CustomerStep() {
             </dl>
           ) : (
             <p className="text-sm text-muted-foreground">
-              No customer selected. Please select a customer from the list or add
-              a new one.
+              No customer selected. Please select a customer from the list or
+              add a new one.
             </p>
           )}
         </div>
@@ -189,7 +204,10 @@ export function CustomerStep() {
       <section className="rounded-xl border bg-card p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold" style={{ color: "var(--pos-navy)" }}>
+            <h2
+              className="text-lg font-semibold"
+              style={{ color: "var(--pos-navy)" }}
+            >
               Issue Complimentary Ticket?
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
@@ -197,7 +215,10 @@ export function CustomerStep() {
               complimentary pass/reference.
             </p>
           </div>
-          <Switch checked={isComplimentary} onCheckedChange={setComplimentary} />
+          <Switch
+            checked={isComplimentary}
+            onCheckedChange={setComplimentary}
+          />
         </div>
 
         {isComplimentary ? (
@@ -210,8 +231,8 @@ export function CustomerStep() {
         )}
       </section>
 
-      {/* --- Seat Allocation (collapsible) --- */}
-      {attraction?.requiresSeats && <SeatAllocationAccordion />}
+      {/* --- Seat Allocation (inline, seated attractions only) --- */}
+      {attraction?.requiresSeats && <SeatAllocation attraction={attraction} />}
 
       <div className="flex items-center justify-between">
         <Button variant="outline" onClick={() => router.push(ROUTES.POS)}>
@@ -426,39 +447,11 @@ function Field({
   );
 }
 
-/** Collapsible "Seat Allocation" summary that routes into the seat step. */
-function SeatAllocationAccordion() {
-  const [open, setOpen] = useState(false);
-  return (
-    <section className="rounded-xl border bg-card">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between p-4 text-left"
-      >
-        <div>
-          <p className="font-semibold" style={{ color: "var(--pos-navy)" }}>
-            Seat Allocation
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Choose seats for this booking
-          </p>
-        </div>
-        <ChevronDown
-          className={`size-5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-      {open && (
-        <div className="border-t px-4 py-3 text-sm text-muted-foreground">
-          Seats are selected on the next step. Click <strong>Continue</strong>{" "}
-          to open the seat allocation grid.
-        </div>
-      )}
-    </section>
-  );
-}
-
-function AddCustomerInline({ onCreated }: { onCreated: (c: Customer) => void }) {
+function AddCustomerInline({
+  onCreated,
+}: {
+  onCreated: (c: Customer) => void;
+}) {
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState<string | undefined>(undefined);
   const [gstn, setGstn] = useState("");
@@ -543,7 +536,9 @@ function AddCustomerInline({ onCreated }: { onCreated: (c: Customer) => void }) 
           <p className="text-xs text-destructive">{errors.gstn}</p>
         )}
       </div>
-      {error && <p className="text-sm text-destructive sm:col-span-2">{error}</p>}
+      {error && (
+        <p className="text-sm text-destructive sm:col-span-2">{error}</p>
+      )}
       <div className="sm:col-span-2">
         <Button
           className="pos-btn-navy"

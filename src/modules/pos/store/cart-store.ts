@@ -151,7 +151,9 @@ export const useCartStore = create<CartState>()(
       setComplimentary: (value) => set({ isComplimentary: value }),
       setPassReference: (passReference) => set({ passReference }),
       setComplimentaryDetails: (patch) =>
-        set((state) => ({ complimentary: { ...state.complimentary, ...patch } })),
+        set((state) => ({
+          complimentary: { ...state.complimentary, ...patch },
+        })),
 
       assignSeat: (passengerRef, selection) =>
         set((state) => {
@@ -172,11 +174,11 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: "pos-cart",
-      // Bump when the persisted shape changes. v3: the booking screen is now a
-      // flat product catalog (one auto-selected "Catalog" attraction); the
-      // selectedAttraction is sourced from the server each load, so any older
-      // cached cart is dropped to avoid reading a stale/legacy attraction.
-      version: 3,
+      // Bump when the persisted shape changes. v3: flat product catalog. v4:
+      // SeatSelection changed from `{ seatId }` to `{ seatNumber, seatLabel }`
+      // (layout-derived seats) — any older cached cart is dropped so we never
+      // read a seat selection with a stale/undefined shape.
+      version: 4,
       migrate: () => ({}) as Partial<CartState>,
       // sessionStorage: survives refresh, gone when the tab closes. SSR-safe —
       // createJSONStorage lazily reads sessionStorage only in the browser.

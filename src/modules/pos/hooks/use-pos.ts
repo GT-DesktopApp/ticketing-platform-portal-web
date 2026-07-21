@@ -15,9 +15,9 @@ import type {
 } from "@/modules/pos/schemas/booking.schema";
 import type {
   Attraction,
-  BogieView,
   CategoryType,
   Customer,
+  SeatAvailability,
 } from "@/modules/pos/types";
 
 /** Query keys, centralised so invalidation stays consistent. */
@@ -75,15 +75,18 @@ export function useAttractions(search?: string) {
   });
 }
 
-/** Bogie/seat matrix with server-computed sequential locking. */
+/**
+ * Layout-derived seat availability for the inline Seat Allocation grid: the
+ * attraction's seat-layout geometry plus the seat numbers already booked. Kept
+ * fresh (staleTime 5s) so occupancy reflects concurrent bookings.
+ */
 export function useAttractionSeats(attractionId: string | null) {
   return useQuery({
     queryKey: posKeys.seats(attractionId ?? ""),
     enabled: !!attractionId,
-    // Seats change as others book; keep this fresh.
     staleTime: 5_000,
     queryFn: async () => {
-      const { data } = await apiClient.get<BogieView[]>(
+      const { data } = await apiClient.get<SeatAvailability>(
         `${API_ROUTES.ATTRACTIONS}/${attractionId}/seats`,
       );
       return data;

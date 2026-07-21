@@ -46,6 +46,24 @@ export type TicketCategory = TicketProduct;
 
 export type BookingType = "STANDARD" | "CATEGORY";
 
+/**
+ * The seat-layout geometry attached to a seated attraction. Mirrors the
+ * `SeatLayout` model's config fields — the seat grid is rendered from these via
+ * `modules/layouts/geometry.ts` (there are no per-seat DB rows).
+ */
+export interface SeatLayoutConfig {
+  id: string;
+  name: string;
+  totalSeats: number;
+  rows: number;
+  columnsLeft: number;
+  columnsRight: number;
+  aislePosition: "LEFT" | "CENTRE" | "RIGHT" | "DUAL" | "NONE";
+  aisleWidth: "NARROW" | "MEDIUM" | "WIDE";
+  /** 1-indexed VIP row numbers. */
+  vipRows: number[];
+}
+
 export interface Attraction {
   id: string;
   name: string;
@@ -63,6 +81,8 @@ export interface Attraction {
   isActive: boolean;
   /** The attraction's ticket rows (visitor or ticket categories per mode). */
   ticketProducts: TicketProduct[];
+  /** Seat-layout geometry when `requiresSeats` (null otherwise / if unassigned). */
+  seatLayout: SeatLayoutConfig | null;
 }
 
 export interface Customer {
@@ -96,9 +116,20 @@ export interface BogieView {
 
 /** A seat chosen for a passenger during allocation. */
 export interface SeatSelection {
-  seatId: string;
+  /** Seat number within the attraction's layout (1-indexed). */
+  seatNumber: number;
   seatLabel: string; // e.g. "A-05"
   passengerRef: string; // "Adult 1"
+}
+
+/**
+ * Layout-derived seat availability for the allocation grid. The client renders
+ * the grid from `layout` (via geometry.ts) and greys out numbers in `occupied`.
+ */
+export interface SeatAvailability {
+  layout: SeatLayoutConfig | null;
+  /** Seat numbers already assigned to a booking for this attraction. */
+  occupied: number[];
 }
 
 export type PaymentMethod = "CASH" | "CARD" | "UPI";

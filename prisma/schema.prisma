@@ -284,9 +284,10 @@ model Attraction {
   closeTime String? @map("close_time") // "6:00 PM"
   isActive  Boolean @default(true) @map("is_active")
 
-  categories TicketCategory[]
-  bogies     Bogie[]
-  bookings   Booking[]
+  categories      TicketCategory[]
+  bogies          Bogie[]
+  bookings        Booking[]
+  seatAssignments SeatAssignment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -417,8 +418,7 @@ model Seat {
   side    String
   status  SeatStatus @default(AVAILABLE)
 
-  bogie       Bogie            @relation(fields: [bogieId], references: [id], onDelete: Cascade)
-  assignments SeatAssignment[]
+  bogie Bogie @relation(fields: [bogieId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -532,22 +532,33 @@ model BookingItem {
 }
 
 /// Binds a passenger (by category label) to a specific seat for a booking.
+/// A seat allocated to a booking. Seats are DERIVED from the attraction's
+/// `SeatLayout` geometry (there are no per-seat rows), so an assignment is keyed
+/// by the attraction + the layout seat NUMBER (1..totalSeats) rather than a
+/// `Seat` FK. Occupancy for the allocation grid = the seat numbers present here
+/// for a given attraction.
 model SeatAssignment {
   id           String @id @default(uuid()) @db.Uuid
   bookingId    String @map("booking_id") @db.Uuid
-  seatId       String @map("seat_id") @db.Uuid
+  attractionId String @map("attraction_id") @db.Uuid
+  /// Seat number within the attraction's layout (1-indexed).
+  seatNumber   Int    @map("seat_number")
+  /// Human-friendly label shown in the UI, e.g. "A-05".
+  seatLabel    String @map("seat_label")
   /// Passenger label shown in the UI, e.g. "Adult 1", "Child 1".
   passengerRef String @map("passenger_ref")
 
-  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  seat    Seat    @relation(fields: [seatId], references: [id])
+  booking    Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  attraction Attraction @relation(fields: [attractionId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  // A seat can only be assigned once (enforces no double-booking of a seat).
-  @@unique([seatId])
+  // A seat number can only be assigned once per attraction (enforces no
+  // double-booking; a concurrent sale grabbing the same seat hits P2002).
+  @@unique([attractionId, seatNumber])
   @@index([bookingId])
+  @@index([attractionId])
   @@map("seat_assignments")
 }
 

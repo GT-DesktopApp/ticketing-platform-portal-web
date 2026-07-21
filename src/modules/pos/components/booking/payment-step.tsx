@@ -33,7 +33,10 @@ export function PaymentStep() {
 
   const createBooking = useCreateBooking();
   const [method, setMethod] = useState<PaymentMethod>("CASH");
-  const [received, setReceived] = useState("");
+  // Raw input; `null` means "untouched" → we show/use the exact amount due so
+  // the confirm button is active by default (the common exact-cash case). Once
+  // the cashier types, we store their string (including "").
+  const [received, setReceived] = useState<string | null>(null);
 
   useEffect(() => {
     if (!attraction) router.replace(ROUTES.POS);
@@ -46,19 +49,26 @@ export function PaymentStep() {
 
   // The payable amount is a whole rupee (the billing engine guarantees this).
   const dueRupees = invoice.finalAmount;
-  const receivedRupees = parseFloat(received) || 0;
+
+  // While untouched, the field mirrors the amount due (no effect / no cascading
+  // render needed — it's derived).
+  const receivedValue = received ?? dueRupees.toFixed(2);
+  const receivedRupees = parseFloat(receivedValue) || 0;
   const changeRupees = Math.max(0, receivedRupees - dueRupees);
   const receivedPaise = Math.round(receivedRupees * 100);
 
   async function confirm() {
     if (!attraction) return;
 
-    const items = Object.entries(tickets).map(([ticketCategoryId, quantity]) => ({
-      ticketCategoryId,
-      quantity,
-    }));
+    const items = Object.entries(tickets).map(
+      ([ticketCategoryId, quantity]) => ({
+        ticketCategoryId,
+        quantity,
+      }),
+    );
     const seatAssignments = Object.values(seats).map((s) => ({
-      seatId: s.seatId,
+      seatNumber: s.seatNumber,
+      seatLabel: s.seatLabel,
       passengerRef: s.passengerRef,
     }));
 
@@ -167,14 +177,18 @@ export function PaymentStep() {
                 <Label>Amount Received (₹)</Label>
                 <Input
                   type="number"
-                  value={received}
+                  value={receivedValue}
                   onChange={(e) => setReceived(e.target.value)}
                   placeholder={dueRupees.toFixed(2)}
                 />
               </div>
               <div className="space-y-1.5">
                 <Label>Change Return</Label>
-                <Input value={formatCurrency(changeRupees)} readOnly className="bg-muted/40" />
+                <Input
+                  value={formatCurrency(changeRupees)}
+                  readOnly
+                  className="bg-muted/40"
+                />
               </div>
             </div>
           )}

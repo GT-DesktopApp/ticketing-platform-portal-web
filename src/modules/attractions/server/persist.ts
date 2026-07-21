@@ -35,7 +35,8 @@ export async function createAttraction(input: AttractionInput) {
         create: input.categories.map((c, i) => ({
           name: c.name,
           pricePaise: toPaise(c.basePrice),
-          futurePricePaise: c.futurePrice != null ? toPaise(c.futurePrice) : null,
+          futurePricePaise:
+            c.futurePrice != null ? toPaise(c.futurePrice) : null,
           effectiveFrom: toDate(c.effectiveFrom),
           image: c.image ?? null,
           sortOrder: i,
@@ -59,57 +60,70 @@ export async function updateAttraction(id: string, input: AttractionInput) {
     .map((c) => c.id)
     .filter((v): v is string => !!v);
 
-  return prisma.$transaction(async (tx) => {
-    await tx.attraction.update({
-      where: { id },
-      data: {
-        name: input.name,
-        type: input.type,
-        description: input.description ?? null,
-        imageUrl: input.imageUrl,
-        isActive: input.isActive,
-        openTime: input.openTime ?? null,
-        closeTime: input.closeTime ?? null,
-        durationMin: input.durationMin ?? null,
-        requiresSeats: input.requiresSeats,
-        seatLayoutId: input.requiresSeats ? (input.seatLayoutId ?? null) : null,
-        baseRatePaise: baseRatePaise(input.categories),
-      },
-    });
+  // Only the writes that must be atomic live inside the transaction; the
+  // read-back happens after commit (see below). The transaction timeout is
+  // raised because a large base64 `imageUrl` data-URI plus the category
+  // reconcile can exceed Prisma's 5s default on a remote (Neon) database.
+  await prisma.$transaction(
+    async (tx) => {
+      await tx.attraction.update({
+        where: { id },
+        data: {
+          name: input.name,
+          type: input.type,
+          description: input.description ?? null,
+          imageUrl: input.imageUrl,
+          isActive: input.isActive,
+          openTime: input.openTime ?? null,
+          closeTime: input.closeTime ?? null,
+          durationMin: input.durationMin ?? null,
+          requiresSeats: input.requiresSeats,
+          seatLayoutId: input.requiresSeats
+            ? (input.seatLayoutId ?? null)
+            : null,
+          baseRatePaise: baseRatePaise(input.categories),
+        },
+      });
 
-    // Soft-delete categories dropped in the form (preserves booking history FKs).
-    await tx.ticketCategory.updateMany({
-      where: {
-        attractionId: id,
-        isActive: true,
-        ...(keepIds.length ? { id: { notIn: keepIds } } : {}),
-      },
-      data: { isActive: false },
-    });
+      // Soft-delete categories dropped in the form (preserves booking history FKs).
+      await tx.ticketCategory.updateMany({
+        where: {
+          attractionId: id,
+          isActive: true,
+          ...(keepIds.length ? { id: { notIn: keepIds } } : {}),
+        },
+        data: { isActive: false },
+      });
 
-    for (let i = 0; i < input.categories.length; i++) {
-      const c = input.categories[i];
-      const data = {
-        name: c.name,
-        pricePaise: toPaise(c.basePrice),
-        futurePricePaise: c.futurePrice != null ? toPaise(c.futurePrice) : null,
-        effectiveFrom: toDate(c.effectiveFrom),
-        image: c.image ?? null,
-        sortOrder: i,
-        isActive: true,
-      };
-      if (c.id) {
-        await tx.ticketCategory.update({ where: { id: c.id }, data });
-      } else {
-        await tx.ticketCategory.create({
-          data: { ...data, attractionId: id },
-        });
+      for (let i = 0; i < input.categories.length; i++) {
+        const c = input.categories[i];
+        const data = {
+          name: c.name,
+          pricePaise: toPaise(c.basePrice),
+          futurePricePaise:
+            c.futurePrice != null ? toPaise(c.futurePrice) : null,
+          effectiveFrom: toDate(c.effectiveFrom),
+          image: c.image ?? null,
+          sortOrder: i,
+          isActive: true,
+        };
+        if (c.id) {
+          await tx.ticketCategory.update({ where: { id: c.id }, data });
+        } else {
+          await tx.ticketCategory.create({
+            data: { ...data, attractionId: id },
+          });
+        }
       }
-    }
+    },
+    // Remote DB round-trips + a large image payload can exceed the 5s default.
+    { timeout: 20_000, maxWait: 10_000 },
+  );
 
-    return tx.attraction.findUniqueOrThrow({
-      where: { id },
-      include: attractionInclude,
-    });
+  // Read-only re-fetch for the response — outside the transaction so it never
+  // counts against the transaction timeout.
+  return prisma.attraction.findUniqueOrThrow({
+    where: { id },
+    include: attractionInclude,
   });
 }

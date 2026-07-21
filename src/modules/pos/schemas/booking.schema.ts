@@ -41,10 +41,7 @@ export const createCustomerSchema = z.object({
     .pipe(z.string().min(1, "Name is required")),
   // The PhoneInput stores E.164 (e.g. "+919812345678"); validate it as a real
   // phone number rather than a loose length check.
-  mobile: z
-    .string()
-    .trim()
-    .refine(isValidPhone, "Enter a valid mobile number"),
+  mobile: z.string().trim().refine(isValidPhone, "Enter a valid mobile number"),
   email: z
     .string()
     .trim()
@@ -93,9 +90,14 @@ export const bookingItemSchema = z.object({
   quantity: z.number().int().min(1),
 });
 
-/** One seat assignment: which seat goes to which passenger label. */
+/**
+ * One seat assignment: a layout seat number/label mapped to a passenger. Seats
+ * are derived from the attraction's layout geometry, so we send the seat NUMBER
+ * (1-indexed) + its display label rather than a `Seat` row id.
+ */
 export const seatAssignmentSchema = z.object({
-  seatId: z.string().uuid(),
+  seatNumber: z.number().int().positive(),
+  seatLabel: z.string().min(1), // "A-05"
   passengerRef: z.string().min(1), // "Adult 1", "Child 1", …
 });
 
